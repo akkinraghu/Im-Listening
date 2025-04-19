@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies first (for better caching)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy the configuration files
+COPY next.config.js tsconfig.json tailwind.config.js postcss.config.js ./
+COPY public ./public
+
+# We'll mount the src directory as a volume, so we don't need to copy it here
+
+# Expose the port Next.js runs on
+EXPOSE 3000
+
+# Command to run development server with hot reloading
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
