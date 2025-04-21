@@ -6,14 +6,25 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Uninstall any existing Tailwind CSS packages
+RUN npm uninstall tailwindcss postcss autoprefixer @tailwindcss/postcss
+
+# Install Tailwind CSS v3 and its dependencies (known to work with Next.js)
+RUN npm install -D tailwindcss@3.3.3 postcss@8.4.31 autoprefixer@10.4.16
+
 # Copy the configuration files
-COPY next.config.js tsconfig.json tailwind.config.js postcss.config.js ./
+COPY next.config.js tsconfig.json ./
+
+# Create Tailwind CSS configuration files with v3 syntax
+RUN echo 'module.exports = {plugins: {tailwindcss: {}, autoprefixer: {}}}' > postcss.config.js
+RUN echo 'module.exports = {content: ["./src/pages/**/*.{js,ts,jsx,tsx,mdx}", "./src/components/**/*.{js,ts,jsx,tsx,mdx}", "./src/app/**/*.{js,ts,jsx,tsx,mdx}"], theme: {extend: {colors: {primary: {50: "#f0f9ff", 100: "#e0f2fe", 200: "#bae6fd", 300: "#7dd3fc", 400: "#38bdf8", 500: "#0ea5e9", 600: "#0284c7", 700: "#0369a1", 800: "#075985", 900: "#0c4a6e"}}}}, plugins: []}' > tailwind.config.js
+
 COPY public ./public
 
 # We'll mount the src directory as a volume, so we don't need to copy it here
 
 # Expose the port Next.js runs on
-EXPOSE 3000
+EXPOSE 3007
 
 # Command to run development server with hot reloading
-CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3007"]

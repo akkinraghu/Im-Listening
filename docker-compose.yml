@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3005:3000"
+      - "3005:3007"
     volumes:
       # Mount source code for hot reloading
       - ./src:/app/src

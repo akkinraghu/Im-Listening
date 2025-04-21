@@ -1,0 +1,9 @@
+# MongoDB Connection String Fix
+
+# For MongoDB Atlas (SRV format) - DO NOT include port number with SRV format
+MONGODB_URI=mongodb+srv://root:example@localhost/im-listening?retryWrites=true&w=majority
+
+# OR for local MongoDB (standard format) - port number is allowed
+# MONGODB_URI=mongodb://root:example@localhost:27017/im_listening?authSource=admin
+
+# Choose one of the above options and update your .env.local file
