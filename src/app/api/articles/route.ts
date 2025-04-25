@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Article from '@/models/Article';
+import { ArticlePg } from '@/models/postgres/Article';
 
 /**
  * GET /api/articles
@@ -13,21 +12,24 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const source = searchParams.get('source');
     const query = searchParams.get('query');
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
     
-    // Build filter object
-    const filter: any = {};
-    if (source) filter.source = source;
-    if (query) filter.$text = { $search: query };
+    let articles;
+    let total = 0;
     
-    await connectToDatabase();
-    
-    const articles = await Article.find(filter)
-      .sort({ publishedDate: -1 })
-      .skip(skip)
-      .limit(limit);
-    
-    const total = await Article.countDocuments(filter);
+    if (query) {
+      // Search by title if query is provided
+      articles = await ArticlePg.findByTitle(query, limit);
+      total = articles.length; // Simplified for now
+    } else if (source) {
+      // Filter by source
+      articles = await ArticlePg.findBySource(source, limit, offset);
+      total = await ArticlePg.countBySource(source);
+    } else {
+      // Get all articles with pagination
+      articles = await ArticlePg.findAll(limit, offset);
+      total = await ArticlePg.count();
+    }
     
     return NextResponse.json({
       articles,
@@ -54,36 +56,24 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, content, source, url, author, publishedDate, metadata } = body;
     
-    if (!title || !content || !source) {
+    // Validate required fields
+    if (!body.title || !body.content || !body.source) {
       return NextResponse.json(
-        { error: 'Title, content, and source are required' },
+        { error: 'Missing required fields: title, content, source' },
         { status: 400 }
       );
     }
     
-    await connectToDatabase();
-    
-    // Check if article with same URL already exists
-    if (url) {
-      const existingArticle = await Article.findOne({ url });
-      if (existingArticle) {
-        return NextResponse.json(
-          { error: 'Article with this URL already exists', articleId: existingArticle._id },
-          { status: 409 }
-        );
-      }
-    }
-    
-    const article = await Article.create({
-      title,
-      content,
-      source,
-      url,
-      author,
-      publishedDate: publishedDate ? new Date(publishedDate) : undefined,
-      metadata
+    // Create the article
+    const article = await ArticlePg.create({
+      title: body.title,
+      content: body.content,
+      source: body.source,
+      url: body.url,
+      author: body.author,
+      published_date: body.publishedDate ? new Date(body.publishedDate) : undefined,
+      metadata: body.metadata
     });
     
     return NextResponse.json(article, { status: 201 });

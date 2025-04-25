@@ -23,6 +23,11 @@ type OutputFormat = 'Plain' | 'SOAP' | 'Clinical Summary' | 'Bullet Points' | 'H
 
 export default function Home() {
   const [transcription, setTranscription] = useState<string>('');
+  const [transcriptionByUserType, setTranscriptionByUserType] = useState<Record<UserType, string>>({
+    'General Practitioner': '',
+    'School Lecture': '',
+    'Raghav': ''
+  });
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [userType, setUserType] = useState<UserType>('General Practitioner');
@@ -42,6 +47,10 @@ export default function Home() {
   // Handle transcription updates from the recorder component
   const handleTranscriptionUpdate = (text: string, isFinal: boolean) => {
     setTranscription(text);
+    setTranscriptionByUserType(prev => ({
+      ...prev,
+      [userType]: text
+    }));
   };
 
   // Save the transcription to the database
@@ -166,6 +175,24 @@ export default function Home() {
     }
   }
 
+  // Function to clear transcription for the current user type only
+  function clearCurrentTranscription() {
+    if (recorderRef.current) {
+      recorderRef.current.clearTranscription();
+    }
+    setTranscription('');
+    setTranscriptionByUserType(prev => ({
+      ...prev,
+      [userType]: ''
+    }));
+  }
+
+  // Update transcription when user type changes
+  useEffect(() => {
+    // Load the transcription for the selected user type
+    setTranscription(transcriptionByUserType[userType]);
+  }, [userType, transcriptionByUserType]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-purple-50 to-gray-100">
       <header className="bg-white shadow-md border-b border-purple-200">
@@ -236,7 +263,14 @@ export default function Home() {
                     className="w-full h-48 p-4 text-gray-700 resize-none focus:outline-none"
                     placeholder="Your transcription will appear here..."
                     value={transcription}
-                    onChange={(e) => setTranscription(e.target.value)}
+                    onChange={(e) => {
+                      const newText = e.target.value;
+                      setTranscription(newText);
+                      setTranscriptionByUserType(prev => ({
+                        ...prev,
+                        [userType]: newText
+                      }));
+                    }}
                     readOnly={isRecording}
                   ></textarea>
                 </div>
@@ -304,6 +338,17 @@ export default function Home() {
                   </div>
                 </div>
               )}
+
+              {/* Clear button for the current transcription */}
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={clearCurrentTranscription}
+                  className="px-3 py-1 text-sm text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 rounded-md transition-colors"
+                  disabled={!transcription.trim()}
+                >
+                  Clear Current Transcription
+                </button>
+              </div>
 
               {/* Hidden Transcription Recorder Component */}
               <div className="hidden">

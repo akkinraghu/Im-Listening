@@ -27,18 +27,20 @@ services:
       - .env.local
     restart: unless-stopped
     depends_on:
-      - mongodb
+      - postgres
 
-  mongodb:
-    image: mongo:latest
+  postgres:
+    image: ankane/pgvector:latest
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongodb_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
     restart: unless-stopped
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=example
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=im_listening
 
 volumes:
-  mongodb_data:
+  postgres_data:

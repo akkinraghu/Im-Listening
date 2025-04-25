@@ -1,24 +1,30 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
+import connectToPostgres from '@/lib/postgres';
+import { executeQuery } from '@/lib/postgres';
 
 export async function GET() {
   try {
-    // Test database connection
-    const mongoose = await connectToDatabase();
+    // Test PostgreSQL connection
+    const client = await connectToPostgres();
+    const pgVersion = await client.query('SELECT version()');
+    client.release();
     
     return NextResponse.json({
       status: 'success',
-      message: 'Database connection successful',
-      mongooseVersion: mongoose.version,
-      connectionState: mongoose.connection.readyState
+      database: {
+        type: 'PostgreSQL',
+        version: pgVersion.rows[0].version,
+        connectionStatus: 'connected'
+      },
+      message: 'API is working correctly'
     });
   } catch (error) {
-    console.error('Test API error:', error);
+    console.error('API test error:', error);
     return NextResponse.json(
       { 
-        status: 'error',
-        message: 'Database connection failed',
-        error: (error as Error).message
+        status: 'error', 
+        message: 'API error', 
+        error: error instanceof Error ? error.message : String(error)
       },
       { status: 500 }
     );

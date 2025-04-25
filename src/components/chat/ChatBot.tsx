@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import ReferenceCard from './ReferenceCard';
 
 interface Message {
   id: string;
@@ -13,7 +14,9 @@ interface Message {
     url?: string;
     author?: string;
     publishedDate?: string;
+    source?: string;
   }[];
+  noArticlesFound?: boolean;
 }
 
 interface ChatBotProps {
@@ -99,6 +102,7 @@ export default function ChatBot({ userType }: ChatBotProps) {
         role: 'assistant',
         timestamp: new Date().toISOString(),
         sources: data.sources,
+        noArticlesFound: data.noArticlesFound
       };
       
       setMessages((prev) => [...prev, assistantMessage]);
@@ -143,30 +147,29 @@ export default function ChatBot({ userType }: ChatBotProps) {
             >
               <p className="whitespace-pre-wrap">{message.content}</p>
               
+              {/* No Articles Found Message */}
+              {message.noArticlesFound && (
+                <div className="mt-3 pt-2 border-t border-gray-300">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                    <div className="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>No medical articles found in our database for this query. This response is based on general knowledge.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* Sources */}
               {message.sources && message.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-300 text-xs text-gray-600">
-                  <p className="font-semibold">Sources:</p>
-                  <ul className="list-disc pl-4 mt-1">
+                <div className="mt-3 pt-2 border-t border-gray-300">
+                  <p className="font-semibold text-sm text-gray-700 mb-2">References: ({message.sources.length})</p>
+                  <div className="space-y-2">
                     {message.sources.map((source, index) => (
-                      <li key={index}>
-                        {source.url ? (
-                          <a
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-600 hover:underline"
-                          >
-                            {source.title}
-                          </a>
-                        ) : (
-                          source.title
-                        )}
-                        {source.author && ` by ${source.author}`}
-                        {source.publishedDate && ` (${new Date(source.publishedDate).toLocaleDateString()})`}
-                      </li>
+                      <ReferenceCard key={index} source={source} />
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>

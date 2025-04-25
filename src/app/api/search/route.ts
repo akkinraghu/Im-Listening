@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import ArticleChunk from '@/models/ArticleChunk';
-import Article from '@/models/Article';
+import { ArticleChunkPg } from '@/models/postgres/ArticleChunk';
+import { generateEmbedding as generateEmbeddingService } from '@/services/embedding';
 
 /**
  * POST /api/search
- * Perform semantic search using embeddings
+ * Perform semantic search using embeddings with PostgreSQL
  */
 export async function POST(req: NextRequest) {
   try {
@@ -19,42 +18,32 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    await connectToDatabase();
+    // Generate embedding for the query
+    console.log(`Generating embedding for query: "${query}"`);
+    const embedding = await generateEmbeddingService(query);
     
-    // In a real application, we would:
-    // 1. Generate an embedding for the query using Azure OpenAI API
-    // 2. Use vector search to find similar chunks
+    // Perform vector search
+    console.log('Performing vector search with PostgreSQL');
+    const results = await ArticleChunkPg.vectorSearch(embedding, limit);
     
-    // For now, we'll simulate a semantic search with a text search
-    const chunks = await ArticleChunk.find(
-      { $text: { $search: query } },
-      { score: { $meta: "textScore" } }
-    )
-      .sort({ score: { $meta: "textScore" } })
-      .limit(limit);
-    
-    // Get the article details for each chunk
-    const results = await Promise.all(
-      chunks.map(async (chunk) => {
-        const article = await Article.findById(chunk.articleId);
-        return {
-          chunkId: chunk._id,
-          articleId: chunk.articleId,
-          content: chunk.content,
-          chunkIndex: chunk.chunkIndex,
-          article: article ? {
-            title: article.title,
-            source: article.source,
-            url: article.url,
-            author: article.author,
-            publishedDate: article.publishedDate
-          } : null
-        };
-      })
-    );
+    // Format the results
+    const formattedResults = results.map(result => ({
+      chunkId: result.chunk_id,
+      articleId: result.article_id,
+      content: result.content,
+      chunkIndex: result.chunk_index,
+      distance: result.distance,
+      article: {
+        title: result.title,
+        source: result.source,
+        url: result.url,
+        author: result.author,
+        publishedDate: result.published_date
+      }
+    }));
     
     return NextResponse.json({
-      results,
+      results: formattedResults,
       query
     });
   } catch (error) {
@@ -71,7 +60,7 @@ export async function POST(req: NextRequest) {
  * and vector search here. This would involve:
  * 
  * 1. Calling Azure OpenAI API to generate embeddings for the query
- * 2. Using MongoDB's vector search capabilities to find similar chunks
+ * 2. Using PostgreSQL's vector search capabilities to find similar chunks
  * 
  * Example of how this might look:
  */
@@ -102,31 +91,12 @@ async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 async function performVectorSearch(embedding: number[], limit: number) {
-  // This is a placeholder. In a real application, we would use MongoDB's
+  // This is a placeholder. In a real application, we would use PostgreSQL's
   // vector search capabilities to find chunks with similar embeddings.
   
   // Example of how this might be implemented:
   /*
-  const chunks = await ArticleChunk.aggregate([
-    {
-      $vectorSearch: {
-        index: "embeddingVectorIndex",
-        path: "embedding",
-        queryVector: embedding,
-        numCandidates: limit * 10,
-        limit: limit
-      }
-    },
-    {
-      $project: {
-        _id: 1,
-        articleId: 1,
-        content: 1,
-        chunkIndex: 1,
-        score: { $meta: "vectorSearchScore" }
-      }
-    }
-  ]);
+  const chunks = await ArticleChunkPg.vectorSearch(embedding, limit);
   
   return chunks;
   */

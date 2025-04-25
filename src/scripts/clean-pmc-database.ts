@@ -1,11 +1,11 @@
 /**
  * Clean PMC Database Script
  *
- * This script cleans the MongoDB database by removing all PMC articles and chunks.
- * Use with caution as it will delete all data in the articles and articlechunks collections.
+ * This script cleans the PostgreSQL database by removing all PMC articles and chunks.
+ * Use with caution as it will delete all data in the articles and article_chunks tables.
  */
 
-import mongoose from 'mongoose';
+import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -13,71 +13,51 @@ import fs from 'fs';
 // Load environment variables
 dotenv.config({ path: '.env.local' });
 
-// MongoDB connection string with authentication
-const MONGODB_URI = 'mongodb://root:example@localhost:27017/im_listening?authSource=admin';
+// PostgreSQL connection
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_URI || 'postgres://postgres:example@localhost:5432/im_listening'
+});
 
 // State file path
-const STATE_FILE = path.join(__dirname, 'pmc-update-state.json');
+const STATE_FILE = path.join(__dirname, 'pmc-last-update.json');
 
-// Connect to MongoDB
-async function connectToDatabase(): Promise<void> {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
-  } catch (error) {
-    console.error('Error connecting to MongoDB:', error);
-    throw error;
-  }
-}
-
-// Define the Article model
-const articleSchema = new mongoose.Schema({
-  title: String,
-  content: String,
-  source: String,
-  url: String,
-  author: String,
-  publishedDate: Date,
-});
-
-const Article = mongoose.model('Article', articleSchema);
-
-// Define the ArticleChunk model
-const articleChunkSchema = new mongoose.Schema({
-  content: String,
-  embedding: String,
-  articleId: mongoose.Schema.Types.ObjectId,
-  chunkIndex: Number,
-});
-
-const ArticleChunk = mongoose.model('ArticleChunk', articleChunkSchema);
-
-// Clean the database
+/**
+ * Clean the database
+ */
 async function cleanDatabase(): Promise<void> {
+  console.log('Starting database cleanup...');
+  
+  const client = await pool.connect();
+  
   try {
-    console.log('Connecting to MongoDB...');
-    await connectToDatabase();
+    // Begin transaction
+    await client.query('BEGIN');
     
-    console.log('Deleting all article chunks...');
-    const chunksResult = await ArticleChunk.deleteMany({});
-    console.log(`Deleted ${chunksResult.deletedCount} article chunks`);
+    // Delete all article chunks
+    const deleteChunksResult = await client.query('DELETE FROM article_chunks');
+    console.log(`Deleted ${deleteChunksResult.rowCount} article chunks`);
     
-    console.log('Deleting all articles...');
-    const articlesResult = await Article.deleteMany({});
-    console.log(`Deleted ${articlesResult.deletedCount} articles`);
+    // Delete all articles
+    const deleteArticlesResult = await client.query('DELETE FROM articles');
+    console.log(`Deleted ${deleteArticlesResult.rowCount} articles`);
     
-    // Remove the state file if it exists
+    // Commit transaction
+    await client.query('COMMIT');
+    
+    console.log('Database cleanup completed successfully');
+    
+    // Reset the state file if it exists
     if (fs.existsSync(STATE_FILE)) {
-      fs.unlinkSync(STATE_FILE);
-      console.log('Removed state file');
+      fs.writeFileSync(STATE_FILE, JSON.stringify({ lastUpdate: null }));
+      console.log('Reset state file');
     }
-    
-    console.log('Database cleaning completed');
   } catch (error) {
+    // Rollback transaction on error
+    await client.query('ROLLBACK');
     console.error('Error cleaning database:', error);
+    throw error;
   } finally {
-    await mongoose.disconnect();
-    console.log('Disconnected from MongoDB');
+    client.release();
   }
 }
 

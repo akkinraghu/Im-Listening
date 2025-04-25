@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Transcription from '@/models/Transcription';
+import { executeQuery } from '@/lib/postgres';
+import { createTranscription } from '@/lib/db';
 
 /**
  * GET /api/transcription
@@ -11,37 +11,67 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
     const userType = searchParams.get('userType');
     const purpose = searchParams.get('purpose');
 
-    await connectToDatabase();
-    
-    // Build query based on filters
-    const query: any = {};
-    if (userType) {
-      query.userType = userType;
-    }
-    if (purpose) {
-      query.purpose = purpose;
-    }
-    
-    const transcriptions = await Transcription.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-    
-    const total = await Transcription.countDocuments(query);
-    
-    return NextResponse.json({
-      transcriptions,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit)
+    try {
+      // Build query based on filters
+      let query = 'SELECT * FROM transcriptions WHERE 1=1';
+      const params: any[] = [];
+      let paramIndex = 1;
+      
+      if (userType) {
+        query += ` AND user_type = $${paramIndex}`;
+        params.push(userType);
+        paramIndex++;
       }
-    });
+      
+      if (purpose) {
+        query += ` AND purpose = $${paramIndex}`;
+        params.push(purpose);
+        paramIndex++;
+      }
+      
+      // Add sorting, pagination
+      query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(limit, offset);
+      
+      // Execute query
+      const result = await executeQuery(query, params);
+      
+      // Get total count for pagination
+      let countQuery = 'SELECT COUNT(*) FROM transcriptions WHERE 1=1';
+      const countParams: any[] = [];
+      let countParamIndex = 1;
+      
+      if (userType) {
+        countQuery += ` AND user_type = $${countParamIndex}`;
+        countParams.push(userType);
+        countParamIndex++;
+      }
+      
+      if (purpose) {
+        countQuery += ` AND purpose = $${countParamIndex}`;
+        countParams.push(purpose);
+        countParamIndex++;
+      }
+      
+      const countResult = await executeQuery<{ count: string }>(countQuery, countParams);
+      const total = parseInt(countResult[0].count);
+      
+      return NextResponse.json({
+        transcriptions: result,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      throw error;
+    }
   } catch (error) {
     console.error('Error fetching transcriptions:', error);
     return NextResponse.json(
@@ -67,17 +97,15 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    await connectToDatabase();
-    
     // Extract userType and purpose from metadata if provided there
     const extractedUserType = userType || (metadata?.userType || 'Other');
     const extractedPurpose = purpose || (metadata?.purpose || 'general');
     
-    const transcription = await Transcription.create({
+    const transcription = await createTranscription({
       text,
       metadata,
-      userId,
-      userType: extractedUserType,
+      user_id: userId,
+      user_type: extractedUserType,
       purpose: extractedPurpose
     });
     
