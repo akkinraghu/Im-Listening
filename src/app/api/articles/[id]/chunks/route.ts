@@ -2,19 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/utils/postgres';
 import { isValidUUID } from '@/utils/validation';
 
-type RouteParams = {
-  params: {
-    id: string;
-  };
-};
-
 /**
  * GET /api/articles/[id]/chunks
  * Get all chunks for an article
  */
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { id: string } }
 ) {
   try {
     const { id } = params;
@@ -61,7 +55,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { id: string } }
 ) {
   try {
     const { id } = params;
