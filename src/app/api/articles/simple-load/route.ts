@@ -4,9 +4,15 @@ import { pool } from '@/utils/postgres';
 // API key for security
 const API_KEY = process.env.ARTICLE_LOAD_API_KEY || 'default_key';
 
-export async function GET(req: NextRequest) {
+/**
+ * GET /api/articles/simple-load
+ * Load a simple test article
+ */
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(request.url);
     const apiKey = searchParams.get('apiKey');
     
     // Simple API key validation

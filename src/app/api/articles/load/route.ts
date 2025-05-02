@@ -22,9 +22,11 @@ const SAMPLE_ARTICLE_SOURCES = [
  * GET /api/articles/load
  * Load and process articles for the vector database
  */
-export async function GET(req: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(request.url);
     const count = parseInt(searchParams.get('count') || DEFAULT_ARTICLE_COUNT.toString());
     const apiKey = searchParams.get('apiKey');
     
