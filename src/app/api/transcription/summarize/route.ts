@@ -174,7 +174,22 @@ ${text}`
 
     // Search for related articles in our database
     const vectorStore = await getVectorStore();
-    const relatedArticles = [];
+    
+    // Define an interface for the article type
+    interface RelatedArticle {
+      id: string | number;  
+      title: string;
+      url?: string;
+      source?: string;
+      snippet?: string;
+      similarity?: number;
+      abstract?: string;
+      journal?: string;
+      authors?: string[];
+      publicationDate?: Date;
+    }
+    
+    const relatedArticles: RelatedArticle[] = [];
 
     for (const topic of topics) {
       // Search for related articles using vector similarity

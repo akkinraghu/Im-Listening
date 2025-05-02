@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Article from '@/models/Article';
+import { pool } from '@/utils/postgres';
+
+// API key for security
+const API_KEY = process.env.ARTICLE_LOAD_API_KEY || 'default_key';
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,14 +10,12 @@ export async function GET(req: NextRequest) {
     const apiKey = searchParams.get('apiKey');
     
     // Simple API key validation
-    if (!apiKey || apiKey !== process.env.ARTICLE_LOAD_API_KEY) {
+    if (!apiKey || apiKey !== API_KEY) {
       return NextResponse.json(
         { error: 'Invalid API key' },
         { status: 401 }
       );
     }
-    
-    await connectToDatabase();
     
     // Create a simple test article without embeddings
     const testArticle = {
@@ -27,15 +27,23 @@ export async function GET(req: NextRequest) {
       publishedDate: new Date()
     };
     
-    // Save the article to the database
-    const savedArticle = await Article.create(testArticle);
-    
+    // Insert the article into PostgreSQL
+    const result = await pool.query(
+      `INSERT INTO articles 
+       (title, content, source, url, author, published_date, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       RETURNING id`,
+      [testArticle.title, testArticle.content, testArticle.source, testArticle.url, testArticle.author, testArticle.publishedDate]
+    );
+
+    const articleId = result.rows[0].id;
+
     return NextResponse.json({
       status: 'success',
       message: 'Test article created successfully',
       article: {
-        id: savedArticle._id,
-        title: savedArticle.title
+        id: articleId,
+        title: testArticle.title
       }
     });
   } catch (error) {

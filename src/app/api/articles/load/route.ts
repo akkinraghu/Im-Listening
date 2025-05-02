@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Article from '@/models/Article';
-import ArticleChunk from '@/models/ArticleChunk';
+import { pool } from '@/utils/postgres';
 
 // Default number of articles to load
 const DEFAULT_ARTICLE_COUNT = 10;
@@ -38,21 +36,19 @@ export async function GET(req: NextRequest) {
       );
     }
     
-    await connectToDatabase();
-    
     // Check if we already have articles
-    const existingCount = await Article.countDocuments();
+    const existingCount = await pool.query('SELECT COUNT(*) FROM articles');
     
-    if (existingCount >= count) {
+    if (existingCount.rows[0].count >= count) {
       return NextResponse.json({
-        message: `Already have ${existingCount} articles, no new articles loaded`,
+        message: `Already have ${existingCount.rows[0].count} articles, no new articles loaded`,
         articlesLoaded: 0,
-        totalArticles: existingCount
+        totalArticles: existingCount.rows[0].count
       });
     }
     
     // Determine how many more articles to load
-    const articlesToLoad = Math.min(count - existingCount, SAMPLE_ARTICLE_SOURCES.length);
+    const articlesToLoad = Math.min(count - existingCount.rows[0].count, SAMPLE_ARTICLE_SOURCES.length);
     
     // Load and process articles
     const results = await Promise.all(
@@ -62,14 +58,14 @@ export async function GET(req: NextRequest) {
           const article = await fetchArticleContent(url);
           
           // Save article to database
-          const savedArticle = await Article.create({
-            title: article.title,
-            content: article.content,
-            source: article.source,
-            url: article.url,
-            author: article.author,
-            publishedDate: article.publishedDate
-          });
+          const insertResult = await pool.query(
+            `INSERT INTO articles 
+             (title, content, source, url, author, published_date, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+             RETURNING id`,
+            [article.title, article.content, article.source, article.url, article.author, article.publishedDate]
+          );
+          const articleId = insertResult.rows[0].id;
           
           // Chunk the article content
           const chunks = chunkArticleContent(article.content);
@@ -80,16 +76,16 @@ export async function GET(req: NextRequest) {
             const embedding = await generateEmbedding(chunk);
             
             // Save chunk with embedding
-            await ArticleChunk.create({
-              articleId: savedArticle._id,
-              content: chunk,
-              chunkIndex,
-              embedding
-            });
+            await pool.query(
+              `INSERT INTO article_chunks 
+               (article_id, content, chunk_index, embedding, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+              [articleId, chunk, chunkIndex, embedding]
+            );
           }));
           
           return {
-            articleId: savedArticle._id,
+            articleId,
             title: article.title,
             chunksCount: chunks.length,
             success: true
@@ -111,7 +107,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       message: `Successfully loaded ${successfulArticles} articles`,
       articlesLoaded: successfulArticles,
-      totalArticles: existingCount + successfulArticles,
+      totalArticles: existingCount.rows[0].count + successfulArticles,
       results
     });
   } catch (error) {

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Article from '@/models/Article';
-import ArticleChunk from '@/models/ArticleChunk';
-import mongoose from 'mongoose';
+import { pool } from '@/utils/postgres';
+import { isValidUUID } from '@/utils/validation';
 
 // Define the params type according to Next.js 15 requirements
 export async function GET(
@@ -12,19 +10,20 @@ export async function GET(
   try {
     const { id } = params;
     
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidUUID(id)) {
       return NextResponse.json(
         { error: 'Invalid article ID' },
         { status: 400 }
       );
     }
     
-    await connectToDatabase();
-    
     // Check if article exists
-    const article = await Article.findById(id);
+    const articleResult = await pool.query(
+      'SELECT * FROM articles WHERE id = $1',
+      [id]
+    );
     
-    if (!article) {
+    if (articleResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Article not found' },
         { status: 404 }
@@ -32,11 +31,12 @@ export async function GET(
     }
     
     // Get all chunks for this article
-    const chunks = await ArticleChunk.find({ articleId: id })
-      .sort({ chunkIndex: 1 })
-      .select('-embedding'); // Exclude the embedding vector to reduce response size
+    const chunksResult = await pool.query(
+      'SELECT * FROM article_chunks WHERE article_id = $1 ORDER BY chunk_index',
+      [id]
+    );
     
-    return NextResponse.json({ chunks });
+    return NextResponse.json({ chunks: chunksResult.rows });
   } catch (error) {
     console.error('Error fetching article chunks:', error);
     return NextResponse.json(
@@ -56,59 +56,59 @@ export async function POST(
 ) {
   try {
     const { id } = params;
-    const body = await req.json();
-    const { chunkSize = 1000, overlapSize = 200 } = body;
     
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidUUID(id)) {
       return NextResponse.json(
         { error: 'Invalid article ID' },
         { status: 400 }
       );
     }
     
-    await connectToDatabase();
-    
     // Check if article exists
-    const article = await Article.findById(id);
+    const articleResult = await pool.query(
+      'SELECT * FROM articles WHERE id = $1',
+      [id]
+    );
     
-    if (!article) {
+    if (articleResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Article not found' },
         { status: 404 }
       );
     }
     
-    // Delete existing chunks for this article
-    await ArticleChunk.deleteMany({ articleId: id });
+    const article = articleResult.rows[0];
+    const content = article.content;
     
-    // Generate chunks from the article content
-    const chunks = generateChunks(article.content, chunkSize, overlapSize);
+    if (!content) {
+      return NextResponse.json(
+        { error: 'Article has no content to chunk' },
+        { status: 400 }
+      );
+    }
     
-    // In a real application, we would generate embeddings here
-    // using Azure OpenAI API, but for now we'll just create placeholder embeddings
-    const placeholderEmbedding = Array(1536).fill(0).map(() => Math.random());
+    // Generate chunks
+    const chunkSize = 1000;
+    const overlapSize = 200;
+    const chunks = generateChunks(content, chunkSize, overlapSize);
     
-    // Create chunks in the database
-    const chunkDocs = await Promise.all(
-      chunks.map(async (chunk, index) => {
-        return await ArticleChunk.create({
-          articleId: id,
-          content: chunk,
-          chunkIndex: index,
-          embedding: placeholderEmbedding,
-          metadata: {
-            title: article.title,
-            source: article.source,
-            chunkSize,
-            overlapSize
-          }
-        });
-      })
+    // Delete existing chunks
+    await pool.query(
+      'DELETE FROM article_chunks WHERE article_id = $1',
+      [id]
     );
     
-    return NextResponse.json({
-      message: 'Chunks and embeddings generated successfully',
-      chunkCount: chunkDocs.length
+    // Insert new chunks
+    for (let i = 0; i < chunks.length; i++) {
+      await pool.query(
+        'INSERT INTO article_chunks (article_id, content, chunk_index) VALUES ($1, $2, $3)',
+        [id, chunks[i], i]
+      );
+    }
+    
+    return NextResponse.json({ 
+      message: 'Article chunks generated successfully',
+      chunkCount: chunks.length
     });
   } catch (error) {
     console.error('Error generating article chunks:', error);
@@ -127,20 +127,15 @@ function generateChunks(text: string, chunkSize: number, overlapSize: number): s
   let startIndex = 0;
   
   while (startIndex < text.length) {
-    // Calculate end index for this chunk
     const endIndex = Math.min(startIndex + chunkSize, text.length);
+    chunks.push(text.substring(startIndex, endIndex));
     
-    // Extract the chunk
-    const chunk = text.substring(startIndex, endIndex);
-    
-    // Add the chunk to our list
-    chunks.push(chunk);
-    
-    // Move the start index for the next chunk, accounting for overlap
+    // Move start index for next chunk, accounting for overlap
     startIndex = endIndex - overlapSize;
     
-    // If we've reached the end of the text, break out of the loop
-    if (startIndex >= text.length) {
+    // If we're near the end and the remaining text is smaller than the overlap,
+    // just end the chunking to avoid tiny chunks
+    if (startIndex + overlapSize >= text.length) {
       break;
     }
   }
