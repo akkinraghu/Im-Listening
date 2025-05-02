@@ -30,20 +30,25 @@ function generateCacheKey(query: string, userType: string): string {
  * POST /api/chat
  * Process a chat query using vector search and OpenAI
  */
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    console.log('Starting chat API request');
-    const body = await req.json();
-    const { query, userType } = body;
-    
-    console.log(`Chat query: "${query}", User type: ${userType}`);
-    
-    if (!query) {
+    const { query, userType, messages, context } = await request.json();
+
+    // Handle lecture-specific chat if context is provided
+    if (context) {
+      return handleLectureChat(messages, context);
+    }
+
+    // Regular chat processing for non-lecture queries
+    if (!query || typeof query !== 'string') {
       return NextResponse.json(
-        { error: 'Query is required' },
+        { error: 'Query parameter is required' },
         { status: 400 }
       );
     }
+
+    console.log('Starting chat API request');
+    console.log(`Chat query: "${query}", User type: ${userType}`);
     
     // Check cache first
     const now = Date.now();
@@ -175,5 +180,72 @@ async function generateAIResponse(query: string, chunks: any[], userType: string
   } catch (error) {
     console.error('Error generating AI response:', error);
     return 'Sorry, there was an error generating a response. Please try again.';
+  }
+}
+
+/**
+ * Handle lecture-specific chat questions
+ */
+async function handleLectureChat(messages: any[], context: any) {
+  try {
+    // Get the last user message
+    const lastUserMessage = messages.findLast(m => m.role === 'user')?.content || '';
+    
+    if (!lastUserMessage) {
+      return NextResponse.json(
+        { error: 'No user message found' },
+        { status: 400 }
+      );
+    }
+
+    // Extract context information
+    const { summary, topics, topicResources } = context;
+    
+    // Create a context string from the lecture information
+    const contextString = `
+LECTURE SUMMARY:
+${summary}
+
+KEY TOPICS:
+${topics.join(', ')}
+
+TOPIC DETAILS:
+${topicResources.map((resource: any) => 
+  `Topic: ${resource.topic}
+   Description: ${resource.description}
+   Resources: ${resource.videos.length} videos, ${resource.articles.length} articles
+  `).join('\n')}
+`;
+
+    // Generate response using OpenAI
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a helpful educational assistant answering questions about a lecture. 
+          Use the following lecture context to inform your answers. 
+          Be concise, accurate, and helpful. If you don't know the answer based on the context, 
+          say so and suggest resources the user might want to check.
+          
+          ${contextString}`
+        },
+        ...messages
+      ],
+      temperature: 0.7,
+      max_tokens: 500
+    });
+
+    const aiResponse = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+
+    return NextResponse.json({
+      response: aiResponse
+    });
+  } catch (error) {
+    console.error('Error handling lecture chat:', error);
+    return NextResponse.json(
+      { error: 'Failed to process lecture chat' },
+      { status: 500 }
+    );
   }
 }
