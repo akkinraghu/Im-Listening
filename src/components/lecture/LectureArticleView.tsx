@@ -14,6 +14,9 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
   // Reference to the chat box to programmatically ask questions
   const chatBoxRef = useRef<ModernChatBoxHandle>(null);
 
+  // Create a ref for the lecture summary section
+  const summaryRef = useRef<HTMLDivElement>(null);
+
   // Function to handle topic click
   const handleTopicClick = (topic: string) => {
     if (chatBoxRef.current) {
@@ -55,14 +58,14 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
         {/* Lecture Content Section */}
         <div>
           {/* Lecture Summary Section */}
-          <section className="mb-8">
+          <section className="mb-8" ref={summaryRef} id="lecture-summary">
             <h2 className="text-2xl font-bold text-purple-800 mb-4 flex items-center">
               <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Lecture Summary
             </h2>
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 h-64 overflow-y-auto">
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 h-64 overflow-y-auto custom-scrollbar">
               <div className="prose max-w-none">
                 {summary.split('\n').map((paragraph: string, idx: number) => (
                   <p key={idx} className="mb-4 text-gray-700">

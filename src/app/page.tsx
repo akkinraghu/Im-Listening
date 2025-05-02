@@ -349,6 +349,15 @@ export default function Home() {
       
       setSummaryResponse(data);
       
+      // Prevent auto-scrolling by using setTimeout to delay focus
+      setTimeout(() => {
+        // Find the lecture summary element and scroll to it if it exists
+        const lectureSummaryElement = document.getElementById('lecture-summary');
+        if (lectureSummaryElement) {
+          lectureSummaryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      
       setError(null);
     } catch (err: any) {
       setError(`Failed to summarize transcription: ${err.message || 'Unknown error'}`);
@@ -536,7 +545,6 @@ export default function Home() {
                 
               {/* Formatted Output Text Area - Always show this */}
               <div className="mb-6">
-                <h3 className="text-md font-medium text-purple-800 mb-2">{pageConfigs[userType].outputType === 'summary' ? 'Summary' : 'Formatted Output'}</h3>
                 <div className="bg-white rounded-lg shadow-md border border-purple-100 overflow-hidden">
                   {pageConfigs[userType].outputType === 'summary' ? (
                     summaryResponse ? (

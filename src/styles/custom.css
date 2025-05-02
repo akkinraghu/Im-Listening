@@ -1,0 +1,36 @@
+/* Custom scrollbar styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Add scroll shadow indicator */
+.custom-scrollbar {
+  background:
+    /* Shadow at the top */
+    linear-gradient(white 30%, rgba(255, 255, 255, 0)) 0 0,
+    /* Shadow at the bottom */
+    linear-gradient(rgba(255, 255, 255, 0), white 70%) 0 100%,
+    /* Shadow at the right */
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) 0 50%,
+    /* Shadow at the left */
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) 100% 50%;
+  background-repeat: no-repeat;
+  background-color: #f9fafb;
+  background-size: 100% 40px, 100% 40px, 8px 100%, 8px 100%;
+  background-attachment: local, local, scroll, scroll;
+}

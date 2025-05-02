@@ -102,9 +102,6 @@ const ModernChatBox = forwardRef<ModernChatBoxHandle, ModernChatBoxProps>(({ sum
   const askQuestion = async (question: string) => {
     if (!question.trim() || isLoading) return;
     
-    // Scroll chat into view if needed
-    chatContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
-    
     // Add user message to chat
     const newMessages: ChatMessage[] = [
       ...messages,
