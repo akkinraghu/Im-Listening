@@ -8,10 +8,10 @@ import { isValidUUID } from '@/utils/validation';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -55,10 +55,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(

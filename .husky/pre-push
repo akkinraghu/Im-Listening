@@ -1,0 +1,14 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "Running type check before pushing..."
+npm run typecheck
+
+# If the typecheck fails, prevent the push
+if [ $? -ne 0 ]; then
+  echo "❌ Type check failed. Please fix the type errors before pushing."
+  exit 1
+fi
+
+echo "✅ Type check passed. Proceeding with push."
+exit 0
