@@ -2,13 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/utils/postgres';
 import { isValidUUID } from '@/utils/validation';
 
-// Define the params type according to Next.js 15 requirements
+type RouteParams = {
+  params: {
+    id: string;
+  };
+};
+
+/**
+ * GET /api/articles/[id]/chunks
+ * Get all chunks for an article
+ */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -52,10 +61,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(

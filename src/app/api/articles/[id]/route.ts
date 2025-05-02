@@ -2,16 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/utils/postgres';
 import { isValidUUID } from '@/utils/validation';
 
+type RouteParams = {
+  params: {
+    id: string;
+  };
+};
+
 /**
  * GET /api/articles/[id]
  * Retrieve a specific article by ID
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -49,10 +55,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const body = await request.json();
     
     if (!isValidUUID(id)) {
@@ -104,10 +110,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
