@@ -4,11 +4,11 @@ import { isValidUUID } from '@/utils/validation';
 
 // Define the params type according to Next.js 15 requirements
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -51,11 +51,11 @@ export async function GET(
  * Generate chunks and embeddings for an article
  */
 export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(

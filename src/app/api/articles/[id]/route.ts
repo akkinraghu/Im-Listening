@@ -7,11 +7,11 @@ import { isValidUUID } from '@/utils/validation';
  * Retrieve a specific article by ID
  */
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -48,12 +48,12 @@ export async function GET(
  * Update a specific article
  */
 export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
-    const body = await req.json();
+    const { id } = context.params;
+    const body = await request.json();
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -103,11 +103,11 @@ export async function PUT(
  * Delete a specific article and its chunks
  */
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
