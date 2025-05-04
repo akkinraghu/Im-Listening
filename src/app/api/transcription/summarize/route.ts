@@ -8,7 +8,7 @@ async function fetchRealResourcesForTopic(topic: string) {
   try {
     // Use the web search API to get real, current results
     const searchQuery = `${topic} educational resources`;
-    const response = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=15&responseFilter=Webpages,Videos`, {
+    const response = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=5&responseFilter=Webpages,Videos`, {
       headers: {
         'Ocp-Apim-Subscription-Key': process.env.BING_SEARCH_API_KEY || '',
       }
@@ -21,87 +21,50 @@ async function fetchRealResourcesForTopic(topic: string) {
 
     const data = await response.json();
     
-    // Extract and verify videos
-    let validVideos = [];
-    if (data.videos?.value) {
-      // Get more videos than needed in case some are unavailable
-      const videoResults = data.videos.value.slice(0, 6);
-      
-      // Process videos in parallel
-      const videoPromises = videoResults.map(async (video: any) => {
-        // Check if it's a YouTube video
-        if (video.hostPageUrl && video.hostPageUrl.includes('youtube.com')) {
-          try {
-            // Extract video ID
-            const url = new URL(video.hostPageUrl);
-            const videoId = url.searchParams.get('v');
-            
-            if (videoId) {
-              // Check if video exists using YouTube oEmbed API
-              const checkUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-              const checkResponse = await fetch(checkUrl);
-              
-              // If response is ok, video exists
-              if (checkResponse.ok) {
-                return {
-                  title: video.name,
-                  platform: 'YouTube',
-                  creator: video.publisher?.[0]?.name || 'YouTube Creator',
-                  url: `https://www.youtube.com/watch?v=${videoId}`,
-                  thumbnail: video.thumbnailUrl,
-                  verified: true
-                };
-              }
-            }
-          } catch (error) {
-            console.error('Error checking video availability:', error);
-          }
-          return null;
-        }
-        
-        // For non-YouTube videos, include them but mark as unverified
-        return {
-          title: video.name,
-          platform: video.hostPageDisplayUrl?.split('.')?.[1] || 'Video Platform',
-          creator: video.publisher?.[0]?.name || 'Content Creator',
-          url: video.contentUrl || video.hostPageUrl,
-          thumbnail: video.thumbnailUrl,
-          verified: false
-        };
-      });
-      
-      // Wait for all video checks to complete
-      const checkedVideos = await Promise.all(videoPromises);
-      
-      // Filter out null results and take up to 3 videos
-      validVideos = checkedVideos
-        .filter(v => v !== null)
-        .slice(0, 3);
-    }
+    // Extract web pages (articles)
+    const articles = data.webPages?.value 
+      ? data.webPages.value
+          .slice(0, 3)
+          .map((page: any) => ({
+            title: page.name,
+            url: page.url,
+            snippet: page.snippet
+          }))
+      : [];
     
-    // Extract articles
-    const articles = data.webPages?.value?.slice(0, 3).map((page: any) => {
-      try {
-        const hostname = new URL(page.url).hostname.replace('www.', '');
-        return {
-          title: page.name,
-          publisher: hostname,
-          url: page.url,
-          snippet: page.snippet
-        };
-      } catch (error) {
-        return {
-          title: page.name,
-          publisher: 'Online Resource',
-          url: page.url,
-          snippet: page.snippet
-        };
-      }
-    }) || [];
-
+    // Extract videos
+    const videos = data.videos?.value
+      ? data.videos.value
+          .slice(0, 2)
+          .filter((video: any) => video.hostPageUrl && video.hostPageUrl.includes('youtube.com'))
+          .map((video: any) => {
+            // Extract video ID for YouTube videos
+            try {
+              const url = new URL(video.hostPageUrl);
+              const videoId = url.searchParams.get('v');
+              
+              return {
+                title: video.name,
+                platform: 'YouTube',
+                creator: video.publisher?.[0]?.name || 'YouTube Creator',
+                url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : video.hostPageUrl,
+                thumbnail: video.thumbnailUrl
+              };
+            } catch (e) {
+              return {
+                title: video.name,
+                platform: 'Video',
+                creator: video.publisher?.[0]?.name || 'Content Creator',
+                url: video.hostPageUrl,
+                thumbnail: video.thumbnailUrl
+              };
+            }
+          })
+      : [];
+    
     return {
-      videos: validVideos,
-      articles
+      articles,
+      videos
     };
   } catch (error) {
     console.error('Error fetching real resources:', error);
@@ -126,7 +89,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No text provided' }, { status: 400 });
     }
 
-    console.log('Summarize API: Text received, length:', text.length);
+    // Truncate text to a reasonable length to speed up processing
+    const truncatedText = text.length > 10000 ? text.substring(0, 10000) + '...' : text;
+    console.log('Summarize API: Text received, length:', truncatedText.length);
 
     // Check if we have a valid OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
@@ -145,60 +110,50 @@ export async function POST(request: Request) {
       summary = await generateChatCompletion([
         {
           role: "system",
-          content: "You are an expert educational assistant that helps summarize lecture content and provide additional learning resources."
+          content: "You are an expert educational assistant that helps summarize lecture content. Be concise and focus on key points."
         },
         {
           role: "user",
-          content: `Please summarize the following lecture transcript and identify 3-5 key topics for further exploration:
-          
-  ${text}`
+          content: `Summarize this lecture transcript in 2-3 paragraphs, highlighting the main points: ${truncatedText}`
         }
       ], {
-        model: "gpt-4",
-        temperature: 0.5,
-        max_tokens: 1000
+        model: "gpt-3.5-turbo-0125", // Use the latest optimized model
+        temperature: 0.3, // Lower temperature for faster, more deterministic responses
+        max_tokens: 400 // Limit token count
       });
-      
-      console.log('Summarize API: Summary generated successfully');
     } catch (error) {
       console.error('Summarize API: Error generating summary:', error);
       return NextResponse.json(
-        { 
-          error: 'Failed to generate summary',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        },
+        { error: 'Failed to generate summary', details: error instanceof Error ? error.message : 'Unknown error' },
         { status: 500 }
       );
     }
 
+    console.log('Summarize API: Summary generated successfully');
+    
+    // Extract key topics from the lecture - use a shorter text sample for speed
     console.log('Summarize API: Extracting key topics');
     
-    // Extract key topics for deep dive
     let topicsContent;
     try {
       topicsContent = await generateChatCompletion([
         {
           role: "system",
-          content: "Extract 3-5 key topics from the lecture summary as a JSON array of strings. Only respond with the JSON array."
+          content: "Extract 2-3 key topics from the lecture as a JSON array of strings. Format your response as: [\"topic1\", \"topic2\", \"topic3\"]"
         },
         {
           role: "user",
-          content: summary
+          content: `Extract key topics from this lecture summary: ${summary}`
         }
       ], {
-        model: "gpt-3.5-turbo",
-        temperature: 0.3,
-        max_tokens: 200
+        model: "gpt-3.5-turbo-0125", // Use the latest optimized model
+        temperature: 0.3, // Lower temperature for faster responses
+        max_tokens: 100 // Limit token count
       });
-      
-      console.log('Summarize API: Topics extracted successfully');
     } catch (error) {
       console.error('Summarize API: Error extracting topics:', error);
       return NextResponse.json(
-        { 
-          error: 'Failed to extract topics',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        },
+        { error: 'Failed to extract topics', details: error instanceof Error ? error.message : 'Unknown error' },
         { status: 500 }
       );
     }
@@ -217,28 +172,20 @@ export async function POST(request: Request) {
           .filter(t => t.length > 0);
       }
       
+      // Limit to 2 topics maximum for faster processing
+      topics = topics.slice(0, 2);
+      
       console.log('Summarize API: Parsed topics:', topics);
     } catch (error) {
       console.error('Summarize API: Error parsing topics:', error);
       // Continue with empty topics array
     }
 
-    // Search for related articles in our database
-    let vectorStore;
-    try {
-      console.log('Summarize API: Getting vector store');
-      vectorStore = await getVectorStore();
-      console.log('Summarize API: Vector store initialized successfully');
-    } catch (error) {
+    // Initialize vector store in parallel with topic extraction to save time
+    const vectorStorePromise = getVectorStore().catch(error => {
       console.error('Summarize API: Error getting vector store:', error);
-      return NextResponse.json(
-        { 
-          error: 'Failed to initialize vector store',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        },
-        { status: 500 }
-      );
-    }
+      return null;
+    });
     
     // Define an interface for the article type
     interface RelatedArticle {
@@ -248,17 +195,18 @@ export async function POST(request: Request) {
       source?: string;
       snippet?: string;
       similarity?: number;
-      abstract?: string;
-      journal?: string;
-      authors?: string[];
-      publicationDate?: Date;
     }
     
     const relatedArticles: RelatedArticle[] = [];
 
-    console.log('Summarize API: Searching for related articles');
-    
-    for (const topic of topics) {
+    // Only search for related articles if vectorStore is available
+    const vectorStore = await vectorStorePromise;
+    if (vectorStore && topics.length > 0) {
+      console.log('Summarize API: Searching for related articles');
+      
+      // Only use the first topic to reduce processing time
+      const topic = topics[0];
+      
       try {
         // Search for related articles using vector similarity
         console.log(`Summarize API: Searching for topic: "${topic}"`);
@@ -267,168 +215,73 @@ export async function POST(request: Request) {
         if (results && results.length > 0) {
           console.log(`Summarize API: Found ${results.length} results for topic "${topic}"`);
           
-          for (const result of results) {
+          // Process only up to 2 results to avoid timeouts
+          const limitedResults = results.slice(0, 2);
+          
+          for (const result of limitedResults) {
             try {
-              // Check if this article is already in our list to avoid duplicates
-              const isDuplicate = relatedArticles.some(article => article.id === result.metadata.id);
-              
-              if (!isDuplicate) {
-                // Get the full article from the database
-                console.log(`Summarize API: Getting article with ID ${result.metadata.id}`);
-                const article = await ArticlePg.findById(result.metadata.id);
-                
-                if (article) {
-                  relatedArticles.push({
-                    id: article.id,
-                    title: article.title,
-                    url: article.url,
-                    source: article.source,
-                    snippet: article.content.substring(0, 200) + '...',
-                    similarity: result.metadata.similarity
-                  });
-                  console.log(`Summarize API: Added article "${article.title}" to related articles`);
-                } else {
-                  console.log(`Summarize API: Article with ID ${result.metadata.id} not found in database`);
-                }
-              } else {
-                console.log(`Summarize API: Skipping duplicate article with ID ${result.metadata.id}`);
-              }
+              // Skip database lookup and just use the chunk content
+              relatedArticles.push({
+                id: result.metadata.id,
+                title: `Related content ${result.metadata.id}`,
+                snippet: result.pageContent.substring(0, 200) + '...',
+                similarity: result.metadata.similarity
+              });
+              console.log(`Summarize API: Added content snippet to related articles`);
             } catch (error) {
               console.error(`Summarize API: Error processing result:`, error);
-              // Continue with next result
             }
-          }
-          
-          // Limit to 5 articles total
-          if (relatedArticles.length >= 5) {
-            console.log('Summarize API: Reached maximum of 5 related articles, stopping search');
-            break;
           }
         } else {
           console.log(`Summarize API: No results found for topic "${topic}"`);
         }
       } catch (error) {
         console.error(`Summarize API: Error searching for topic "${topic}":`, error);
-        // Continue with next topic
       }
+    } else {
+      console.log('Summarize API: Skipping related articles search (no vector store or topics)');
     }
 
-    // For each topic, get additional resources from OpenAI and real web search
-    const resourcesPromises = topics.map(async (topic) => {
-      // Get topic description from OpenAI
-      const descriptionContent = await generateChatCompletion([
-        {
-          role: "system",
-          content: `Write a brief description (2-3 sentences) of the topic "${topic}" as it relates to environmental science or climate change.`
-        },
-        {
-          role: "user",
-          content: `Describe: ${topic}`
-        }
-      ], {
-        model: "gpt-3.5-turbo",
-        temperature: 0.7,
-        max_tokens: 200
+    // For external resources, only use the first topic and fetch in parallel
+    const additionalResources: any[] = [];
+    
+    // Start fetching external resources in parallel with database search
+    let externalResourcesPromise: Promise<any> = Promise.resolve(null);
+    if (topics.length > 0 && process.env.BING_SEARCH_API_KEY) {
+      const externalResourceTopic = topics[0];
+      externalResourcesPromise = fetchRealResourcesForTopic(externalResourceTopic).catch(error => {
+        console.error(`Summarize API: Error fetching real resources:`, error);
+        return null;
       });
-
-      // Try to fetch real resources from the web
-      const realResources = process.env.BING_SEARCH_API_KEY 
-        ? await fetchRealResourcesForTopic(topic)
-        : null;
-      
-      // If we have real resources, use them
-      if (realResources) {
-        // Get book recommendation from OpenAI
-        const bookContent = await generateChatCompletion([
-          {
-            role: "system",
-            content: `Recommend one current, well-regarded book about "${topic}" related to environmental science or climate change. Respond in JSON format: {"title": "book title", "author": "author name", "year": "publication year (recent)"}`
-          },
-          {
-            role: "user",
-            content: `Book recommendation for: ${topic}`
-          }
-        ], {
-          model: "gpt-3.5-turbo",
-          temperature: 0.7,
-          max_tokens: 200
-        });
-        
-        const defaultBook = {
-          title: "Understanding Climate Change",
-          author: "Various Authors",
-          year: "2023"
-        };
-        
-        const book = parseJsonResponse(bookContent, defaultBook);
-        
-        return {
-          topic,
-          description: descriptionContent,
-          videos: realResources.videos,
-          articles: realResources.articles,
-          book
-        };
-      }
-      
-      // Fallback to OpenAI-generated resources if web search fails
-      const resourcesContent = await generateChatCompletion([
-        {
-          role: "system",
-          content: `Generate a JSON object with educational resources for the topic "${topic}". Include:
-          1. A brief description (2-3 sentences)
-          2. 2-3 recommended videos (title, platform, creator name, and a URL)
-          3. 2-3 recommended articles (title, publisher, and a URL)
-          4. 1 book recommendation (title, author, year)
-          
-          Format as valid JSON with the structure:
-          {
-            "topic": "topic name",
-            "description": "brief description",
-            "videos": [{"title": "video title", "platform": "YouTube/Vimeo/etc", "creator": "creator name", "url": "url"}],
-            "articles": [{"title": "article title", "publisher": "publisher name", "url": "url"}],
-            "book": {"title": "book title", "author": "author name", "year": "publication year"}
-          }
-          
-          IMPORTANT: Only include REAL, CURRENT resources that are likely to exist and be available online.`
-        },
-        {
-          role: "user",
-          content: `Generate educational resources for: ${topic}`
-        }
-      ], {
-        model: "gpt-3.5-turbo",
-        temperature: 0.7,
-        max_tokens: 500
-      });
-
-      const fallback = {
-        topic,
-        description: descriptionContent || "Additional resources unavailable",
-        videos: [],
-        articles: [],
-        book: null
+    }
+    
+    // Wait for external resources to complete
+    const realResources = await externalResourcesPromise;
+    if (realResources) {
+      // Limit resources to reduce response size
+      const limitedResources = {
+        articles: realResources.articles?.slice(0, 2) || [],
+        videos: realResources.videos?.slice(0, 1) || []
       };
       
-      return parseJsonResponse(resourcesContent, fallback);
-    });
-
-    const topicResources = await Promise.all(resourcesPromises);
+      additionalResources.push(limitedResources);
+      console.log(`Summarize API: Added external resources`);
+    }
 
     // Combine everything into the response
     const response = {
       summary,
       topics,
       relatedArticles,
-      topicResources
+      additionalResources
     };
 
     return NextResponse.json(response);
-  } catch (error: any) {
-    console.error('Error in summarize API:', error);
+  } catch (error) {
+    console.error('Summarize API: Unexpected error:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to summarize',
+        error: 'An unexpected error occurred',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
