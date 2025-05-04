@@ -64,7 +64,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
       return new PGVectorStore(
         createDummyPool(),
         {
-          tableName: "article_embeddings",
+          tableName: "article_chunks",
           columns: {
             idColumn: "id",
             vectorColumn: "embedding",
@@ -97,7 +97,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
       return new PGVectorStore(
         createDummyPool(),
         {
-          tableName: "article_embeddings",
+          tableName: "article_chunks",
           columns: {
             idColumn: "id",
             vectorColumn: "embedding",
@@ -112,7 +112,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
     vectorStore = new PGVectorStore(
       pool,
       {
-        tableName: "article_embeddings",
+        tableName: "article_chunks",
         columns: {
           idColumn: "id",
           vectorColumn: "embedding",
@@ -131,7 +131,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
     return new PGVectorStore(
       createDummyPool(),
       {
-        tableName: "article_embeddings",
+        tableName: "article_chunks",
         columns: {
           idColumn: "id",
           vectorColumn: "embedding",
@@ -190,7 +190,7 @@ export class PGVectorStore {
             chunk_index, 
             content, 
             0.5 as similarity
-          FROM ${this.config.tableName}
+          FROM article_chunks
           LIMIT $1`,
           [k]
         );
