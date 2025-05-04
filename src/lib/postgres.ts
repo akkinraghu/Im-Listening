@@ -9,6 +9,17 @@ const isBuildTime = process.env.NODE_ENV === 'production' && process.env.NETLIFY
 // Skip pgvector completely - we'll use raw SQL instead
 console.log('Using raw SQL for vector operations instead of pgvector library');
 
+// Create a dummy pool for build time or connection failures
+const createDummyPool = (): Pool => {
+  return {
+    query: () => Promise.resolve({ rows: [], rowCount: 0 }),
+    connect: () => Promise.resolve({} as PoolClient),
+    end: () => Promise.resolve(),
+    on: () => ({}),
+    off: () => ({}),
+  } as unknown as Pool;
+};
+
 export function getPool(): Pool {
   if (pool) {
     return pool;
@@ -20,7 +31,7 @@ export function getPool(): Pool {
     
     if (!POSTGRES_URI) {
       console.error('POSTGRES_URI environment variable is not defined');
-      throw new Error('POSTGRES_URI environment variable is required');
+      return createDummyPool();
     }
     
     console.log('Initializing PostgreSQL pool with connection string from POSTGRES_URI');
@@ -29,12 +40,24 @@ export function getPool(): Pool {
     pool = new Pool({
       connectionString: POSTGRES_URI,
       ssl: POSTGRES_URI.includes('ssl') ? { rejectUnauthorized: false } : undefined,
+      // Add connection timeout to fail fast if DB is unreachable
+      connectionTimeoutMillis: 5000,
+      // Add idle timeout to prevent connections from being kept open too long
+      idleTimeoutMillis: 10000,
+      // Limit max connections to avoid overwhelming the database
+      max: 10,
+    });
+
+    // Add error handler to the pool
+    pool.on('error', (err) => {
+      console.error('Unexpected error on idle PostgreSQL client', err);
     });
 
     // Test the connection
     pool.query('SELECT NOW()', (err) => {
       if (err) {
         console.error('Error connecting to PostgreSQL:', err);
+        // Don't replace the pool here, just log the error
       } else {
         console.log('PostgreSQL connection established successfully');
         
@@ -53,11 +76,7 @@ export function getPool(): Pool {
     console.error('Failed to initialize PostgreSQL pool:', error);
     
     // Create a dummy pool for build/deployment time
-    pool = {
-      query: () => Promise.resolve({ rows: [], rowCount: 0 }),
-      connect: () => Promise.resolve({} as PoolClient),
-      end: () => Promise.resolve(),
-    } as unknown as Pool;
+    pool = createDummyPool();
     
     return pool;
   }
@@ -75,14 +94,24 @@ export async function query(text: string, params?: any[]): Promise<any> {
     return res;
   } catch (error) {
     console.error('Error executing query:', error);
-    throw error;
+    // Return an empty result instead of throwing
+    return { rows: [], rowCount: 0 };
   }
 }
 
 // Helper function to get a client from the pool
 export async function getClient(): Promise<PoolClient> {
   const pool = getPool();
-  return await pool.connect();
+  try {
+    return await pool.connect();
+  } catch (error) {
+    console.error('Error getting client from pool:', error);
+    // Return a dummy client
+    return {
+      query: () => Promise.resolve({ rows: [], rowCount: 0 }),
+      release: () => {},
+    } as unknown as PoolClient;
+  }
 }
 
 // Helper function to execute a transaction

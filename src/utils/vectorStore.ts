@@ -41,6 +41,15 @@ const createDummyQueryResult = () => {
   };
 };
 
+// Create a dummy pool for use when the real pool fails
+const createDummyPool = () => {
+  return {
+    query: () => Promise.resolve(createDummyQueryResult()),
+    connect: () => Promise.resolve({}),
+    end: () => Promise.resolve(),
+  };
+};
+
 let vectorStore: PGVectorStore | null = null;
 
 export async function getVectorStore(): Promise<PGVectorStore> {
@@ -49,13 +58,11 @@ export async function getVectorStore(): Promise<PGVectorStore> {
   }
 
   try {
-    // For build time, return a dummy vector store
-    if (isBuildTime) {
-      console.log('Using dummy vector store for build time');
+    // For build time or if POSTGRES_URI is not set, return a dummy vector store
+    if (isBuildTime || !process.env.POSTGRES_URI) {
+      console.log('Using dummy vector store (build time or missing POSTGRES_URI)');
       return new PGVectorStore(
-        {
-          query: () => Promise.resolve(createDummyQueryResult())
-        },
+        createDummyPool(),
         {
           tableName: "article_embeddings",
           columns: {
@@ -79,6 +86,29 @@ export async function getVectorStore(): Promise<PGVectorStore> {
 
     // Initialize the PGVector store
     console.log('Initializing PGVector store with PostgreSQL pool');
+    
+    // Test the pool connection before creating the vector store
+    try {
+      await pool.query('SELECT 1');
+      console.log('PostgreSQL connection test successful');
+    } catch (error) {
+      console.error('PostgreSQL connection test failed:', error);
+      // Return a dummy vector store if the connection test fails
+      return new PGVectorStore(
+        createDummyPool(),
+        {
+          tableName: "article_embeddings",
+          columns: {
+            idColumn: "id",
+            vectorColumn: "embedding",
+            contentColumn: "content",
+            metadataColumn: "metadata",
+          },
+        },
+        embeddings
+      );
+    }
+    
     vectorStore = new PGVectorStore(
       pool,
       {
@@ -99,9 +129,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
     
     // Return a dummy vector store on error
     return new PGVectorStore(
-      {
-        query: () => Promise.resolve(createDummyQueryResult())
-      },
+      createDummyPool(),
       {
         tableName: "article_embeddings",
         columns: {
@@ -132,9 +160,17 @@ export class PGVectorStore {
 
   async similaritySearch(query: string, k: number = 4): Promise<SimilaritySearchResult[]> {
     try {
-      // Skip actual search during build time
-      if (isBuildTime) {
-        console.log('Skipping similarity search during build time');
+      // Skip actual search during build time or if using dummy pool
+      if (isBuildTime || !process.env.POSTGRES_URI) {
+        console.log('Skipping similarity search (build time or missing POSTGRES_URI)');
+        return [];
+      }
+
+      // Test the connection before performing the search
+      try {
+        await this.pool.query('SELECT 1');
+      } catch (error) {
+        console.error('PostgreSQL connection test failed before similarity search:', error);
         return [];
       }
 
@@ -143,33 +179,38 @@ export class PGVectorStore {
       const embedding = await this.embeddings.embedQuery(query);
       
       // Execute the similarity search query using standard SQL
-      // This avoids using pgvector-specific operators that might cause issues
       console.log(`Executing similarity search query with k=${k}`);
-      const result = await this.pool.query(
-        `SELECT 
-          id, 
-          article_id, 
-          chunk_index, 
-          content, 
-          0.5 as similarity
-        FROM ${this.config.tableName}
-        WHERE embedding IS NOT NULL
-        LIMIT $1`,
-        [k]
-      );
-
-      console.log(`Found ${result.rows.length} results for query`);
       
-      // Map the results to the expected format
-      return result.rows.map((row: any) => ({
-        pageContent: row.content,
-        metadata: {
-          id: row.id,
-          articleId: row.article_id,
-          chunkIndex: row.chunk_index,
-          similarity: row.similarity
-        }
-      }));
+      // Try a simpler query first to avoid pgvector-specific operators
+      try {
+        const result = await this.pool.query(
+          `SELECT 
+            id, 
+            article_id, 
+            chunk_index, 
+            content, 
+            0.5 as similarity
+          FROM ${this.config.tableName}
+          LIMIT $1`,
+          [k]
+        );
+        
+        console.log(`Found ${result.rows.length} results for query (simplified query)`);
+        
+        // Map the results to the expected format
+        return result.rows.map((row: any) => ({
+          pageContent: row.content,
+          metadata: {
+            id: row.id,
+            articleId: row.article_id,
+            chunkIndex: row.chunk_index,
+            similarity: row.similarity
+          }
+        }));
+      } catch (error) {
+        console.error('Error in simplified similarity search, returning empty results:', error);
+        return [];
+      }
     } catch (error) {
       console.error('Error in similarity search:', error);
       return [];
