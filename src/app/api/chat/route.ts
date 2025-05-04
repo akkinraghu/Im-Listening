@@ -199,22 +199,19 @@ async function handleLectureChat(messages: any[], context: any) {
     }
 
     // Extract context information
-    const { summary, topics, topicResources } = context;
+    const { summary, topics, resources } = context;
     
     // Create a context string from the lecture information
     const contextString = `
 LECTURE SUMMARY:
-${summary}
+${summary || "No summary available"}
 
 KEY TOPICS:
-${topics.join(', ')}
+${topics?.join(', ') || "No topics available"}
 
-TOPIC DETAILS:
-${topicResources.map((resource: any) => 
-  `Topic: ${resource.topic}
-   Description: ${resource.description}
-   Resources: ${resource.videos.length} videos, ${resource.articles.length} articles
-  `).join('\n')}
+RESOURCES:
+${resources?.articles?.length ? `Articles: ${resources.articles.length}` : "No articles available"}
+${resources?.videos?.length ? `Videos: ${resources.videos.length}` : "No videos available"}
 `;
 
     // Generate response using OpenAI

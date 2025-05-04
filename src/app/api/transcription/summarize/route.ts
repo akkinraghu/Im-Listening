@@ -270,10 +270,14 @@ export async function POST(request: Request) {
 
     // Combine everything into the response
     const response = {
-      summary,
-      topics,
-      relatedArticles,
-      additionalResources
+      summary: summary || "",
+      topics: topics || [],
+      relatedArticles: relatedArticles || [],
+      additionalResources: additionalResources || [],
+      resources: {
+        articles: additionalResources[0]?.articles || [],
+        videos: additionalResources[0]?.videos || []
+      }
     };
 
     return NextResponse.json(response);

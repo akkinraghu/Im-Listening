@@ -32,31 +32,26 @@ interface SummaryResponse {
   relatedArticles: {
     id: number;
     title: string;
-    url: string;
-    source: string;
-    snippet: string;
-    similarity: number;
+    url?: string;
+    source?: string;
+    snippet?: string;
+    similarity?: number;
   }[];
-  topicResources: {
-    topic: string;
-    description: string;
-    videos: {
-      title: string;
-      platform: string;
-      creator: string;
-      url: string;
-    }[];
+  additionalResources: any[];
+  resources: {
     articles: {
       title: string;
-      publisher: string;
       url: string;
+      snippet?: string;
     }[];
-    book: {
+    videos: {
       title: string;
-      author: string;
-      year: string;
-    } | null;
-  }[];
+      platform?: string;
+      creator?: string;
+      url: string;
+      thumbnail?: string;
+    }[];
+  };
 }
 
 // Define the page configuration by user type

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { SummaryResponse, VideoResource, ArticleResource, TopicResource } from '@/types/summary';
+import { SummaryResponse, VideoResource, ArticleResource } from '@/types/summary';
 import ModernChatBox, { ModernChatBoxHandle } from './ModernChatBox';
 
 interface LectureArticleViewProps {
@@ -46,11 +46,11 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
     );
   }
 
-  const { summary, topics, topicResources } = summaryData;
+  const { summary, topics, relatedArticles, resources } = summaryData;
   
-  // Get all videos and articles from topic resources
-  const allVideos = topicResources.flatMap((resource: TopicResource) => resource.videos || []).slice(0, 3);
-  const allArticles = topicResources.flatMap((resource: TopicResource) => resource.articles || []).slice(0, 3);
+  // Get all videos and articles from resources
+  const allVideos = resources?.videos || [];
+  const allArticles = resources?.articles || [];
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-purple-100 overflow-hidden">
@@ -153,7 +153,7 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
                         </div>
                         <div>
                           <h4 className="font-medium text-gray-800 line-clamp-2">{article.title}</h4>
-                          <p className="text-sm text-gray-500 mt-1">{article.publisher}</p>
+                          <p className="text-sm text-gray-500 mt-1">{article.url ? new URL(article.url).hostname.replace('www.', '') : 'Online Resource'}</p>
                         </div>
                       </div>
                       {article.snippet && (
