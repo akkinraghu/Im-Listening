@@ -3,23 +3,11 @@ import { Pool, PoolClient, QueryResult, QueryConfig } from 'pg';
 // Initialize PostgreSQL connection pool
 let pool: Pool;
 
-// Handle pgvector registration - this is the key fix for the "e.query is not a function" error
-try {
-  // Only import pgvector in runtime environment, not during build
-  if (process.env.NODE_ENV !== 'production' || process.env.NETLIFY !== 'true') {
-    const pgvector = require('pgvector/pg');
-    
-    // Register pgvector with the pg module, not with the pool
-    // This is the correct way to register pgvector
-    pgvector.registerType({ pg: require('pg') });
-    
-    console.log('pgvector registered successfully with pg module');
-  } else {
-    console.log('Skipping pgvector registration during build');
-  }
-} catch (error) {
-  console.warn('Note: pgvector registration failed:', error);
-}
+// Detect build environment
+const isBuildTime = process.env.NODE_ENV === 'production' && process.env.NETLIFY === 'true';
+
+// Skip pgvector completely - we'll use raw SQL instead
+console.log('Using raw SQL for vector operations instead of pgvector library');
 
 try {
   // Check if POSTGRES_URI is defined
@@ -45,12 +33,12 @@ try {
     } else {
       console.log('PostgreSQL connection established successfully');
       
-      // Initialize pgvector extension if needed
+      // Initialize pgvector extension if needed using raw SQL
       try {
         pool.query('CREATE EXTENSION IF NOT EXISTS vector');
-        console.log('pgvector extension initialized');
+        console.log('vector extension initialized via raw SQL');
       } catch (vectorErr) {
-        console.warn('Note: pgvector extension not available:', vectorErr);
+        console.warn('Note: vector extension not available:', vectorErr);
       }
     }
   });
@@ -69,11 +57,11 @@ export { pool };
 // Helper function to execute a query
 export async function query(text: string, params?: any[]): Promise<QueryResult> {
   try {
-    console.log('Executing query:', text, params);
+    console.log('Executing query:', text, params ? '[params]' : '');
     const start = Date.now();
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: res.rowCount });
+    console.log('Executed query', { text: text.substring(0, 50) + '...', duration, rows: res.rowCount });
     return res;
   } catch (error) {
     console.error('Error executing query:', error);

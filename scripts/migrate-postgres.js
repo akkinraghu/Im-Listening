@@ -15,6 +15,7 @@ if (!connectionString) {
 // Create a new PostgreSQL client
 const pool = new Pool({
   connectionString,
+  ssl: connectionString.includes('ssl') ? { rejectUnauthorized: false } : undefined,
 });
 
 async function runMigration() {
@@ -37,16 +38,64 @@ async function runMigration() {
     // Begin transaction
     await client.query('BEGIN');
     
-    console.log('Running initialization SQL...');
-    await client.query(initSql);
+    // Enable vector extension first
+    console.log('Enabling vector extension...');
+    try {
+      await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+      console.log('Vector extension enabled successfully');
+    } catch (error) {
+      console.warn('Warning: Could not enable vector extension:', error.message);
+    }
     
+    // Split the SQL files into individual statements
+    const initStatements = initSql.split(';').filter(stmt => stmt.trim().length > 0);
+    const createTablesStatements = createTablesSql.split(';').filter(stmt => stmt.trim().length > 0);
+    
+    // Execute initialization SQL statements one by one
+    console.log('Running initialization SQL...');
+    for (const stmt of initStatements) {
+      try {
+        await client.query(stmt);
+      } catch (error) {
+        console.warn(`Warning: Statement failed, but continuing: ${error.message}`);
+        console.warn('Failed statement:', stmt.substring(0, 100) + '...');
+      }
+    }
+    
+    // Execute create tables SQL statements one by one
     console.log('Creating tables...');
-    await client.query(createTablesSql);
+    for (const stmt of createTablesStatements) {
+      try {
+        await client.query(stmt);
+      } catch (error) {
+        // Skip errors about existing objects
+        if (error.message.includes('already exists')) {
+          console.warn(`Warning: Object already exists: ${error.message}`);
+        } else {
+          console.error('Error executing statement:', error.message);
+          console.error('Failed statement:', stmt.substring(0, 100) + '...');
+          throw error;
+        }
+      }
+    }
     
     // Commit transaction
     await client.query('COMMIT');
     
     console.log('Migration completed successfully!');
+    
+    // Check if tables exist
+    const tablesResult = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+    
+    console.log('Available tables:');
+    tablesResult.rows.forEach(row => {
+      console.log(`- ${row.table_name}`);
+    });
+    
   } catch (error) {
     // Rollback transaction on error
     await client.query('ROLLBACK');

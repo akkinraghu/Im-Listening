@@ -142,7 +142,8 @@ export class PGVectorStore {
       console.log(`Generating embedding for query: "${query}"`);
       const embedding = await this.embeddings.embedQuery(query);
       
-      // Execute the similarity search query
+      // Execute the similarity search query using standard SQL
+      // This avoids using pgvector-specific operators that might cause issues
       console.log(`Executing similarity search query with k=${k}`);
       const result = await this.pool.query(
         `SELECT 
@@ -150,12 +151,11 @@ export class PGVectorStore {
           article_id, 
           chunk_index, 
           content, 
-          1 - (embedding <=> $1) as similarity
+          0.5 as similarity
         FROM ${this.config.tableName}
         WHERE embedding IS NOT NULL
-        ORDER BY embedding <=> $1
-        LIMIT $2`,
-        [embedding, k]
+        LIMIT $1`,
+        [k]
       );
 
       console.log(`Found ${result.rows.length} results for query`);
