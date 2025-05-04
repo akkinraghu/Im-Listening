@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { pool } from '@/utils/postgres';
 import { isValidUUID } from '@/utils/validation';
 
@@ -7,11 +7,11 @@ import { isValidUUID } from '@/utils/validation';
  * Retrieve a specific article by ID
  */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -48,11 +48,11 @@ export async function GET(
  * Update a specific article
  */
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     const body = await request.json();
     
     if (!isValidUUID(id)) {
@@ -103,11 +103,11 @@ export async function PUT(
  * Delete a specific article and its chunks
  */
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(

@@ -1,17 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { pool } from '@/utils/postgres';
 import { isValidUUID } from '@/utils/validation';
+import { generateChunks } from '../../../../../utils/text';
 
 /**
  * GET /api/articles/[id]/chunks
  * Get all chunks for an article
  */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -54,11 +55,11 @@ export async function GET(
  * Generate chunks and embeddings for an article
  */
 export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -120,28 +121,4 @@ export async function POST(
       { status: 500 }
     );
   }
-}
-
-/**
- * Helper function to split text into chunks with overlap
- */
-function generateChunks(text: string, chunkSize: number, overlapSize: number): string[] {
-  const chunks: string[] = [];
-  let startIndex = 0;
-  
-  while (startIndex < text.length) {
-    const endIndex = Math.min(startIndex + chunkSize, text.length);
-    chunks.push(text.substring(startIndex, endIndex));
-    
-    // Move start index for next chunk, accounting for overlap
-    startIndex = endIndex - overlapSize;
-    
-    // If we're near the end and the remaining text is smaller than the overlap,
-    // just end the chunking to avoid tiny chunks
-    if (startIndex + overlapSize >= text.length) {
-      break;
-    }
-  }
-  
-  return chunks;
 }
