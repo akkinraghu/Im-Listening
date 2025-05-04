@@ -4,15 +4,20 @@ import { Pool, PoolClient, QueryResult, QueryConfig } from 'pg';
 let pool: Pool;
 
 try {
+  // Check if POSTGRES_URI is defined
+  const POSTGRES_URI = process.env.POSTGRES_URI;
+  
+  if (!POSTGRES_URI) {
+    console.error('POSTGRES_URI environment variable is not defined');
+    throw new Error('POSTGRES_URI environment variable is required');
+  }
+  
+  console.log('Initializing PostgreSQL pool with connection string from POSTGRES_URI');
+  
+  // Create the connection pool using the URI directly
   pool = new Pool({
-    user: process.env.POSTGRES_USER || 'postgres',
-    password: process.env.POSTGRES_PASSWORD || 'postgres',
-    host: process.env.POSTGRES_HOST || 'localhost',
-    port: parseInt(process.env.POSTGRES_PORT || '5432'),
-    database: process.env.POSTGRES_DB || 'im_listening',
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionString: POSTGRES_URI,
+    ssl: POSTGRES_URI.includes('ssl') ? { rejectUnauthorized: false } : undefined,
   });
 
   // Test the connection
@@ -24,10 +29,8 @@ try {
       
       // Initialize pgvector extension if needed
       try {
-        // Only try to create the extension if we're not in a production environment
-        if (process.env.NODE_ENV !== 'production') {
-          pool.query('CREATE EXTENSION IF NOT EXISTS vector');
-        }
+        pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+        console.log('pgvector extension initialized');
       } catch (vectorErr) {
         console.warn('Note: pgvector extension not available:', vectorErr);
       }
@@ -47,14 +50,15 @@ export { pool };
 
 // Helper function to execute a query
 export async function query(text: string, params?: any[]): Promise<QueryResult> {
-  const start = Date.now();
   try {
+    console.log('Executing query:', text, params);
+    const start = Date.now();
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
     console.log('Executed query', { text, duration, rows: res.rowCount });
     return res;
   } catch (error) {
-    console.error('Error executing query', { text, error });
+    console.error('Error executing query:', error);
     throw error;
   }
 }

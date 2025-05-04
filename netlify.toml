@@ -6,6 +6,8 @@
   NEXT_TELEMETRY_DISABLED = "1"
   NEXT_DISABLE_ESLINT = "1"
   NODE_ENV = "production"
+  # Force SSL for PostgreSQL connections
+  PGSSLMODE = "require"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

@@ -111,69 +111,134 @@ async function fetchRealResourcesForTopic(topic: string) {
 
 export async function POST(request: Request) {
   try {
+    console.log('Summarize API: Starting request processing');
+    
     // Parse the request body
-    const { text, userType } = await request.json();
+    const body = await request.json().catch(e => {
+      console.error('Summarize API: Error parsing request body:', e);
+      return {};
+    });
+    
+    const { text, userType } = body;
 
     if (!text || text.trim() === '') {
+      console.error('Summarize API: No text provided');
       return NextResponse.json({ error: 'No text provided' }, { status: 400 });
     }
 
+    console.log('Summarize API: Text received, length:', text.length);
+
     // Check if we have a valid OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
+      console.error('Summarize API: OpenAI API key not configured');
       return NextResponse.json(
         { error: 'OpenAI API key not configured' },
         { status: 500 }
       );
     }
 
+    console.log('Summarize API: Generating summary with OpenAI');
+    
     // Generate a summary of the lecture
-    const summary = await generateChatCompletion([
-      {
-        role: "system",
-        content: "You are an expert educational assistant that helps summarize lecture content and provide additional learning resources."
-      },
-      {
-        role: "user",
-        content: `Please summarize the following lecture transcript and identify 3-5 key topics for further exploration:
-        
-${text}`
-      }
-    ], {
-      model: "gpt-4",
-      temperature: 0.5,
-      max_tokens: 1000
-    });
+    let summary;
+    try {
+      summary = await generateChatCompletion([
+        {
+          role: "system",
+          content: "You are an expert educational assistant that helps summarize lecture content and provide additional learning resources."
+        },
+        {
+          role: "user",
+          content: `Please summarize the following lecture transcript and identify 3-5 key topics for further exploration:
+          
+  ${text}`
+        }
+      ], {
+        model: "gpt-4",
+        temperature: 0.5,
+        max_tokens: 1000
+      });
+      
+      console.log('Summarize API: Summary generated successfully');
+    } catch (error) {
+      console.error('Summarize API: Error generating summary:', error);
+      return NextResponse.json(
+        { 
+          error: 'Failed to generate summary',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
 
+    console.log('Summarize API: Extracting key topics');
+    
     // Extract key topics for deep dive
-    const topicsContent = await generateChatCompletion([
-      {
-        role: "system",
-        content: "Extract 3-5 key topics from the lecture summary as a JSON array of strings. Only respond with the JSON array."
-      },
-      {
-        role: "user",
-        content: summary
-      }
-    ], {
-      model: "gpt-3.5-turbo",
-      temperature: 0.3,
-      max_tokens: 200
-    });
+    let topicsContent;
+    try {
+      topicsContent = await generateChatCompletion([
+        {
+          role: "system",
+          content: "Extract 3-5 key topics from the lecture summary as a JSON array of strings. Only respond with the JSON array."
+        },
+        {
+          role: "user",
+          content: summary
+        }
+      ], {
+        model: "gpt-3.5-turbo",
+        temperature: 0.3,
+        max_tokens: 200
+      });
+      
+      console.log('Summarize API: Topics extracted successfully');
+    } catch (error) {
+      console.error('Summarize API: Error extracting topics:', error);
+      return NextResponse.json(
+        { 
+          error: 'Failed to extract topics',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
 
     // Parse topics with fallback handling
-    let topics: string[] = parseJsonResponse<string[]>(topicsContent, []);
-    
-    // If parsing fails, try to extract topics manually
-    if (topics.length === 0) {
-      topics = topicsContent
-        .replace(/[\[\]"]/g, '')
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
+    let topics: string[] = [];
+    try {
+      topics = parseJsonResponse<string[]>(topicsContent, []);
+      
+      // If parsing fails, try to extract topics manually
+      if (topics.length === 0) {
+        topics = topicsContent
+          .replace(/[\[\]"]/g, '')
+          .split(',')
+          .map(t => t.trim())
+          .filter(t => t.length > 0);
+      }
+      
+      console.log('Summarize API: Parsed topics:', topics);
+    } catch (error) {
+      console.error('Summarize API: Error parsing topics:', error);
+      // Continue with empty topics array
     }
 
     // Search for related articles in our database
-    const vectorStore = await getVectorStore();
+    let vectorStore;
+    try {
+      console.log('Summarize API: Getting vector store');
+      vectorStore = await getVectorStore();
+      console.log('Summarize API: Vector store initialized successfully');
+    } catch (error) {
+      console.error('Summarize API: Error getting vector store:', error);
+      return NextResponse.json(
+        { 
+          error: 'Failed to initialize vector store',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
     
     // Define an interface for the article type
     interface RelatedArticle {
@@ -191,38 +256,61 @@ ${text}`
     
     const relatedArticles: RelatedArticle[] = [];
 
+    console.log('Summarize API: Searching for related articles');
+    
     for (const topic of topics) {
-      // Search for related articles using vector similarity
-      const results = await vectorStore.similaritySearch(topic, 2);
-      
-      if (results && results.length > 0) {
-        for (const result of results) {
-          // Check if this article is already in our list to avoid duplicates
-          const isDuplicate = relatedArticles.some(article => article.id === result.metadata.id);
+      try {
+        // Search for related articles using vector similarity
+        console.log(`Summarize API: Searching for topic: "${topic}"`);
+        const results = await vectorStore.similaritySearch(topic, 2);
+        
+        if (results && results.length > 0) {
+          console.log(`Summarize API: Found ${results.length} results for topic "${topic}"`);
           
-          if (!isDuplicate) {
-            // Get the full article from the database
-            const article = await ArticlePg.findById(result.metadata.id);
-            
-            if (article) {
-              relatedArticles.push({
-                id: article.id,
-                title: article.title,
-                url: article.url,
-                source: article.source,
-                snippet: article.content.substring(0, 200) + '...',
-                similarity: result.metadata.similarity
-              });
+          for (const result of results) {
+            try {
+              // Check if this article is already in our list to avoid duplicates
+              const isDuplicate = relatedArticles.some(article => article.id === result.metadata.id);
+              
+              if (!isDuplicate) {
+                // Get the full article from the database
+                console.log(`Summarize API: Getting article with ID ${result.metadata.id}`);
+                const article = await ArticlePg.findById(result.metadata.id);
+                
+                if (article) {
+                  relatedArticles.push({
+                    id: article.id,
+                    title: article.title,
+                    url: article.url,
+                    source: article.source,
+                    snippet: article.content.substring(0, 200) + '...',
+                    similarity: result.metadata.similarity
+                  });
+                  console.log(`Summarize API: Added article "${article.title}" to related articles`);
+                } else {
+                  console.log(`Summarize API: Article with ID ${result.metadata.id} not found in database`);
+                }
+              } else {
+                console.log(`Summarize API: Skipping duplicate article with ID ${result.metadata.id}`);
+              }
+            } catch (error) {
+              console.error(`Summarize API: Error processing result:`, error);
+              // Continue with next result
             }
           }
           
           // Limit to 5 articles total
-          if (relatedArticles.length >= 5) break;
+          if (relatedArticles.length >= 5) {
+            console.log('Summarize API: Reached maximum of 5 related articles, stopping search');
+            break;
+          }
+        } else {
+          console.log(`Summarize API: No results found for topic "${topic}"`);
         }
+      } catch (error) {
+        console.error(`Summarize API: Error searching for topic "${topic}":`, error);
+        // Continue with next topic
       }
-      
-      // If we have enough articles, stop searching
-      if (relatedArticles.length >= 5) break;
     }
 
     // For each topic, get additional resources from OpenAI and real web search
@@ -339,7 +427,10 @@ ${text}`
   } catch (error: any) {
     console.error('Error in summarize API:', error);
     return NextResponse.json(
-      { error: `Failed to summarize: ${error.message}` },
+      { 
+        error: 'Failed to summarize',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
