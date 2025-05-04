@@ -5,10 +5,8 @@ import { OpenAIEmbeddings } from '@langchain/openai';
 import { pool } from './postgres';
 
 // Detect build environment - specifically for Netlify
-const isBuildTime = process.env.NETLIFY === 'true' || 
-                   process.env.CONTEXT === 'production' || 
-                   process.env.CONTEXT === 'deploy-preview' ||
-                   process.env.CONTEXT === 'branch-deploy';
+const isBuildTime = process.env.NODE_ENV === 'production' && 
+                   (process.env.NETLIFY === 'true' || process.env.CONTEXT === 'production');
 
 // Define the result type for similarity search
 interface SimilaritySearchResult {
@@ -74,11 +72,13 @@ export async function getVectorStore(): Promise<PGVectorStore> {
     }
 
     // Initialize the OpenAI embeddings
+    console.log('Initializing OpenAI embeddings');
     const embeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY,
     });
 
     // Initialize the PGVector store
+    console.log('Initializing PGVector store with PostgreSQL pool');
     vectorStore = new PGVectorStore(
       pool,
       {
@@ -139,9 +139,11 @@ export class PGVectorStore {
       }
 
       // Generate embedding for the query
+      console.log(`Generating embedding for query: "${query}"`);
       const embedding = await this.embeddings.embedQuery(query);
       
       // Execute the similarity search query
+      console.log(`Executing similarity search query with k=${k}`);
       const result = await this.pool.query(
         `SELECT 
           id, 
@@ -156,6 +158,8 @@ export class PGVectorStore {
         [embedding, k]
       );
 
+      console.log(`Found ${result.rows.length} results for query`);
+      
       // Map the results to the expected format
       return result.rows.map((row: any) => ({
         pageContent: row.content,

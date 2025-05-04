@@ -3,6 +3,24 @@ import { Pool, PoolClient, QueryResult, QueryConfig } from 'pg';
 // Initialize PostgreSQL connection pool
 let pool: Pool;
 
+// Handle pgvector registration - this is the key fix for the "e.query is not a function" error
+try {
+  // Only import pgvector in runtime environment, not during build
+  if (process.env.NODE_ENV !== 'production' || process.env.NETLIFY !== 'true') {
+    const pgvector = require('pgvector/pg');
+    
+    // Register pgvector with the pg module, not with the pool
+    // This is the correct way to register pgvector
+    pgvector.registerType({ pg: require('pg') });
+    
+    console.log('pgvector registered successfully with pg module');
+  } else {
+    console.log('Skipping pgvector registration during build');
+  }
+} catch (error) {
+  console.warn('Note: pgvector registration failed:', error);
+}
+
 try {
   // Check if POSTGRES_URI is defined
   const POSTGRES_URI = process.env.POSTGRES_URI;
