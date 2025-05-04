@@ -211,7 +211,7 @@ ${text}`
                 url: article.url,
                 source: article.source,
                 snippet: article.content.substring(0, 200) + '...',
-                similarity: result.score
+                similarity: result.metadata.similarity
               });
             }
           }
