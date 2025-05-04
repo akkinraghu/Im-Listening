@@ -51,6 +51,14 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
   // Get all videos and articles from resources
   const allVideos = resources?.videos || [];
   const allArticles = resources?.articles || [];
+  
+  // Debug log to see what resources we have
+  console.log('LectureArticleView resources:', {
+    videosCount: allVideos.length,
+    articlesCount: allArticles.length,
+    videos: allVideos,
+    articles: allArticles
+  });
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-purple-100 overflow-hidden">

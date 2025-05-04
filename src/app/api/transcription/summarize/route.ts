@@ -345,8 +345,16 @@ export async function POST(request: Request) {
     // Process all topics for external resources to get more results
     const topicsToSearch = topics.slice(0, 3); // Use up to 3 topics for search
     
-    if (topicsToSearch.length > 0 && process.env.BING_SEARCH_API_KEY) {
-      console.log(`Summarize API: Fetching external resources for ${topicsToSearch.length} topics`);
+    // Initialize arrays for articles and videos
+    let allArticles = [];
+    let allVideos = [];
+    
+    // Check if Bing Search API key is available
+    const hasBingKey = !!process.env.BING_SEARCH_API_KEY;
+    console.log('Summarize API: Bing Search API key available:', hasBingKey);
+    
+    if (topicsToSearch.length > 0 && hasBingKey) {
+      console.log(`Summarize API: Fetching external resources for ${topicsToSearch.length} topics:`, topicsToSearch);
       
       try {
         // Process topics in parallel
@@ -389,18 +397,59 @@ export async function POST(request: Request) {
         );
         
         // Use up to 5 articles and 3 videos
-        const limitedResources = {
-          articles: uniqueArticles.slice(0, 5),
-          videos: uniqueVideos.slice(0, 3)
-        };
+        allArticles = uniqueArticles.slice(0, 5);
+        allVideos = uniqueVideos.slice(0, 3);
         
-        additionalResources.push(limitedResources);
-        console.log(`Summarize API: Added ${limitedResources.articles.length} articles and ${limitedResources.videos.length} videos`);
+        console.log(`Summarize API: Found ${allArticles.length} articles and ${allVideos.length} videos`);
       } catch (error) {
         console.error(`Summarize API: Error processing external resources:`, error);
       }
     } else {
-      console.log('Summarize API: Skipping external resources (no topics or API key)');
+      console.log('Summarize API: Using fallback resources (no topics or API key)');
+      
+      // Provide fallback resources when API key is not available
+      if (topics.length > 0) {
+        const mainTopic = topics[0];
+        
+        // Fallback articles
+        allArticles = [
+          {
+            title: `Introduction to ${mainTopic}`,
+            url: `https://en.wikipedia.org/wiki/${encodeURIComponent(mainTopic.replace(/\s+/g, '_'))}`,
+            snippet: `Learn about the fundamentals of ${mainTopic} and how it relates to the lecture content.`
+          },
+          {
+            title: `${mainTopic} - Educational Resources`,
+            url: `https://www.khanacademy.org/search?referer=%2F&page_search_query=${encodeURIComponent(mainTopic)}`,
+            snippet: `Khan Academy resources related to ${mainTopic} with comprehensive explanations and examples.`
+          },
+          {
+            title: `${mainTopic} Research Papers`,
+            url: `https://scholar.google.com/scholar?q=${encodeURIComponent(mainTopic)}`,
+            snippet: `Academic research and papers on ${mainTopic} from Google Scholar.`
+          }
+        ];
+        
+        // Fallback videos
+        allVideos = [
+          {
+            title: `${mainTopic} - Educational Video`,
+            platform: 'YouTube',
+            creator: 'Educational Content',
+            url: `https://www.youtube.com/results?search_query=${encodeURIComponent(mainTopic)}+lecture`,
+            thumbnail: 'https://i.ytimg.com/vi/default/hqdefault.jpg'
+          },
+          {
+            title: `Learn about ${mainTopic}`,
+            platform: 'YouTube',
+            creator: 'Educational Content',
+            url: `https://www.youtube.com/results?search_query=learn+${encodeURIComponent(mainTopic)}`,
+            thumbnail: 'https://i.ytimg.com/vi/default/hqdefault.jpg'
+          }
+        ];
+        
+        console.log(`Summarize API: Added ${allArticles.length} fallback articles and ${allVideos.length} fallback videos`);
+      }
     }
 
     // Combine everything into the response
@@ -412,10 +461,17 @@ export async function POST(request: Request) {
       relatedArticles: relatedArticles || [],
       additionalResources: additionalResources || [],
       resources: {
-        articles: additionalResources[0]?.articles || [],
-        videos: additionalResources[0]?.videos || []
+        articles: allArticles,
+        videos: allVideos
       }
     };
+    
+    // Log the resources to debug
+    console.log('Summarize API: Response resources:', {
+      articlesCount: response.resources.articles.length,
+      videosCount: response.resources.videos.length,
+      additionalResourcesCount: additionalResources.length
+    });
 
     return NextResponse.json(response);
   } catch (error) {
