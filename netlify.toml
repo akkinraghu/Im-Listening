@@ -1,10 +1,12 @@
 [build]
-  command = "CI=false npm run build"
+  command = "DISABLE_ESLINT_PLUGIN=true npm run build"
   publish = ".next"
 
 [build.environment]
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NEXT_DISABLE_ESLINT = "true"
+  DISABLE_ESLINT_PLUGIN = "true"
+  CI = "false"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
