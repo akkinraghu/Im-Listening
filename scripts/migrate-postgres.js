@@ -18,22 +18,33 @@ const pool = new Pool({
   ssl: connectionString.includes('ssl') ? { rejectUnauthorized: false } : undefined,
 });
 
+// Function to execute SQL statements directly from a file
+async function executeSqlFile(client, filePath) {
+  console.log(`Executing SQL file: ${filePath}`);
+  const sql = fs.readFileSync(filePath, 'utf8');
+  
+  try {
+    await client.query(sql);
+    console.log(`Successfully executed ${filePath}`);
+    return true;
+  } catch (error) {
+    console.warn(`Warning: Error executing ${filePath}: ${error.message}`);
+    
+    // If the error is about objects already existing, consider it a success
+    if (error.message.includes('already exists')) {
+      console.log('Objects already exist, continuing...');
+      return true;
+    }
+    
+    return false;
+  }
+}
+
 async function runMigration() {
   const client = await pool.connect();
   
   try {
     console.log('Connected to PostgreSQL database');
-    
-    // Read SQL files
-    const initSql = fs.readFileSync(
-      path.resolve(process.cwd(), 'postgres/init/01-init.sql'),
-      'utf8'
-    );
-    
-    const createTablesSql = fs.readFileSync(
-      path.resolve(process.cwd(), 'postgres/init/02-create-tables.sql'),
-      'utf8'
-    );
     
     // Begin transaction
     await client.query('BEGIN');
@@ -47,42 +58,22 @@ async function runMigration() {
       console.warn('Warning: Could not enable vector extension:', error.message);
     }
     
-    // Split the SQL files into individual statements
-    const initStatements = initSql.split(';').filter(stmt => stmt.trim().length > 0);
-    const createTablesStatements = createTablesSql.split(';').filter(stmt => stmt.trim().length > 0);
+    // Execute SQL files directly
+    const initSqlPath = path.resolve(process.cwd(), 'postgres/init/01-init.sql');
+    const createTablesSqlPath = path.resolve(process.cwd(), 'postgres/init/02-create-tables.sql');
     
-    // Execute initialization SQL statements one by one
-    console.log('Running initialization SQL...');
-    for (const stmt of initStatements) {
-      try {
-        await client.query(stmt);
-      } catch (error) {
-        console.warn(`Warning: Statement failed, but continuing: ${error.message}`);
-        console.warn('Failed statement:', stmt.substring(0, 100) + '...');
-      }
+    const initSuccess = await executeSqlFile(client, initSqlPath);
+    const tablesSuccess = await executeSqlFile(client, createTablesSqlPath);
+    
+    if (initSuccess && tablesSuccess) {
+      // Commit transaction
+      await client.query('COMMIT');
+      console.log('Migration completed successfully!');
+    } else {
+      // Rollback transaction on error
+      await client.query('ROLLBACK');
+      console.error('Migration failed due to SQL errors');
     }
-    
-    // Execute create tables SQL statements one by one
-    console.log('Creating tables...');
-    for (const stmt of createTablesStatements) {
-      try {
-        await client.query(stmt);
-      } catch (error) {
-        // Skip errors about existing objects
-        if (error.message.includes('already exists')) {
-          console.warn(`Warning: Object already exists: ${error.message}`);
-        } else {
-          console.error('Error executing statement:', error.message);
-          console.error('Failed statement:', stmt.substring(0, 100) + '...');
-          throw error;
-        }
-      }
-    }
-    
-    // Commit transaction
-    await client.query('COMMIT');
-    
-    console.log('Migration completed successfully!');
     
     // Check if tables exist
     const tablesResult = await client.query(`
