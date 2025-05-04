@@ -37,13 +37,19 @@ export async function GET(req: NextRequest) {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
-    console.error('Error fetching articles:', error);
+    console.error('Error in GET /api/articles:', error);
+    
+    // Return a more detailed error response
     return NextResponse.json(
-      { error: 'Failed to fetch articles' },
+      { 
+        error: 'Failed to fetch articles', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : null) : null
+      }, 
       { status: 500 }
     );
   }
@@ -60,27 +66,33 @@ export async function POST(req: NextRequest) {
     // Validate required fields
     if (!body.title || !body.content || !body.source) {
       return NextResponse.json(
-        { error: 'Missing required fields: title, content, source' },
+        { error: 'Missing required fields: title, content, and source are required' },
         { status: 400 }
       );
     }
     
-    // Create the article
+    // Create new article
     const article = await ArticlePg.create({
       title: body.title,
       content: body.content,
       source: body.source,
       url: body.url,
       author: body.author,
-      published_date: body.publishedDate ? new Date(body.publishedDate) : undefined,
+      published_date: body.published_date ? new Date(body.published_date) : undefined,
       metadata: body.metadata
     });
     
-    return NextResponse.json(article, { status: 201 });
+    return NextResponse.json({ article }, { status: 201 });
   } catch (error) {
-    console.error('Error creating article:', error);
+    console.error('Error in POST /api/articles:', error);
+    
+    // Return a more detailed error response
     return NextResponse.json(
-      { error: 'Failed to create article' },
+      { 
+        error: 'Failed to create article', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : null) : null
+      }, 
       { status: 500 }
     );
   }

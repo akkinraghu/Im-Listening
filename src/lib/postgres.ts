@@ -9,19 +9,23 @@ const isBuildTime = process.env.NETLIFY === 'true' ||
                    process.env.CONTEXT === 'deploy-preview' ||
                    process.env.CONTEXT === 'branch-deploy';
 
-console.log('Environment detection:', {
+// Log environment detection for debugging
+console.log('PostgreSQL Environment:', {
   NETLIFY: process.env.NETLIFY,
   CONTEXT: process.env.CONTEXT,
   NODE_ENV: process.env.NODE_ENV,
-  isBuildTime
+  isBuildTime,
+  hasPostgresUri: !!process.env.POSTGRES_URI
 });
 
 // Import real or mock pgvector based on environment
 try {
   if (isBuildTime) {
+    // Use mock during build time
     console.log('Using pgvector mock during build');
     pgvector = { registerType: () => console.log('Mock pgvector registerType called') };
   } else {
+    // Use real pgvector in runtime
     pgvector = require('pgvector/pg');
     console.log('Imported real pgvector module');
   }
@@ -54,6 +58,7 @@ const createDummyPool = () => {
 if (!POSTGRES_URI && isBuildTime) {
   console.warn('POSTGRES_URI is not defined, but we are in build environment, continuing with dummy connection');
 } else if (!POSTGRES_URI) {
+  console.error('POSTGRES_URI environment variable is missing. Database connections will fail.');
   throw new Error('Please define the POSTGRES_URI environment variable');
 }
 
@@ -88,10 +93,25 @@ if (!cached.pool) {
       console.log('Using dummy PostgreSQL pool for build time');
       cached.pool = createDummyPool();
     } else {
+      console.log('Initializing PostgreSQL pool with connection string');
+      
+      if (!POSTGRES_URI) {
+        throw new Error('POSTGRES_URI is required for database connection');
+      }
+      
+      // Create the real connection pool
       cached.pool = new Pool({
         connectionString: POSTGRES_URI,
+        // Add connection timeout to fail fast if DB is unreachable
+        connectionTimeoutMillis: 5000,
       });
-      console.log('PostgreSQL pool initialized with connection string');
+      
+      // Test the connection immediately
+      cached.pool.query('SELECT NOW()')
+        .then(() => console.log('PostgreSQL connection test successful'))
+        .catch(err => console.error('PostgreSQL connection test failed:', err));
+      
+      console.log('PostgreSQL pool initialized');
     }
   } catch (error) {
     console.error('Failed to initialize PostgreSQL pool:', error);
@@ -108,9 +128,11 @@ const initPgVector = async (client: PoolClient) => {
   
   try {
     // Register pgvector with the client
+    console.log('Registering pgvector with PostgreSQL client');
     pgvector.registerType(client);
     
     // Create the extension if it doesn't exist
+    console.log('Ensuring pgvector extension is enabled');
     await client.query('CREATE EXTENSION IF NOT EXISTS vector');
     console.log('pgvector extension initialized successfully');
   } catch (error) {
