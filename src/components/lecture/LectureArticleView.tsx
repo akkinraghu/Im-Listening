@@ -46,7 +46,7 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
     );
   }
 
-  const { summary, topics, relatedArticles, resources } = summaryData;
+  const { summary, topics, keyPoints, sampleQuestions, relatedArticles, resources } = summaryData;
   
   // Get all videos and articles from resources
   const allVideos = resources?.videos || [];
@@ -74,6 +74,44 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
                 ))}
               </div>
             </div>
+            
+            {/* Key Points Section */}
+            {keyPoints && (
+              <div className="mt-6">
+                <h3 className="text-xl font-semibold text-purple-700 mb-3">Key Points</h3>
+                <div className="bg-purple-50 p-4 rounded-md">
+                  <div className="whitespace-pre-line text-gray-700">{keyPoints}</div>
+                </div>
+              </div>
+            )}
+            
+            {/* Topics Section */}
+            {topics && topics.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-xl font-semibold text-purple-700 mb-3">Key Topics</h3>
+                <div className="flex flex-wrap gap-2">
+                  {topics.map((topic, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleTopicClick(topic)}
+                      className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1 rounded-full text-sm transition-colors duration-200"
+                    >
+                      {topic}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Sample Questions Section */}
+            {sampleQuestions && (
+              <div className="mt-6">
+                <h3 className="text-xl font-semibold text-purple-700 mb-3">Sample Questions</h3>
+                <div className="bg-blue-50 p-4 rounded-md">
+                  <div className="whitespace-pre-line text-gray-700">{sampleQuestions}</div>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Online Resources Section - Moved up */}
@@ -168,44 +206,20 @@ const LectureArticleView: React.FC<LectureArticleViewProps> = ({
             </div>
           </section>
 
-          {/* Key Topics Section - Moved down and made clickable */}
-          <section className="mb-8">
+          {/* Chat Section - Now below the content with ref */}
+          <section className="mt-6" id="chat-section">
             <h2 className="text-2xl font-bold text-purple-800 mb-4 flex items-center">
               <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              Key Topics
+              Ask Questions
             </h2>
-            <div className="flex flex-wrap gap-2">
-              {topics.map((topic: string, idx: number) => (
-                <button 
-                  key={idx} 
-                  onClick={() => handleTopicClick(topic)}
-                  className="px-4 py-2 bg-purple-100 text-purple-800 rounded-full text-sm font-medium hover:bg-purple-200 transition-colors cursor-pointer flex items-center"
-                >
-                  {topic}
-                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </button>
-              ))}
+            <div className="h-[500px]">
+              <ModernChatBox ref={chatBoxRef} summaryData={summaryData} />
             </div>
-            <p className="text-sm text-gray-500 mt-2">Click on a topic to ask the assistant about it</p>
           </section>
         </div>
         
-        {/* Chat Section - Now below the content with ref */}
-        <section className="mt-6" id="chat-section">
-          <h2 className="text-2xl font-bold text-purple-800 mb-4 flex items-center">
-            <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            Ask Questions
-          </h2>
-          <div className="h-[500px]">
-            <ModernChatBox ref={chatBoxRef} summaryData={summaryData} />
-          </div>
-        </section>
       </div>
     </div>
   );

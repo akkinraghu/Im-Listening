@@ -29,6 +29,8 @@ export interface RelatedArticle {
 export interface SummaryResponse {
   summary: string;
   topics: string[];
+  keyPoints: string;
+  sampleQuestions: string;
   relatedArticles: RelatedArticle[];
   additionalResources: any[];
   resources: Resources;

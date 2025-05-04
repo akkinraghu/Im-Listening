@@ -7,8 +7,8 @@ import { ArticlePg } from '../../../../models/postgres/Article';
 async function fetchRealResourcesForTopic(topic: string) {
   try {
     // Use the web search API to get real, current results
-    const searchQuery = `${topic} educational resources`;
-    const response = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=5&responseFilter=Webpages,Videos`, {
+    const searchQuery = `${topic} educational resources lecture`;
+    const response = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=10&responseFilter=Webpages,Videos`, {
       headers: {
         'Ocp-Apim-Subscription-Key': process.env.BING_SEARCH_API_KEY || '',
       }
@@ -24,7 +24,7 @@ async function fetchRealResourcesForTopic(topic: string) {
     // Extract web pages (articles)
     const articles = data.webPages?.value 
       ? data.webPages.value
-          .slice(0, 3)
+          .slice(0, 5)
           .map((page: any) => ({
             title: page.name,
             url: page.url,
@@ -32,11 +32,10 @@ async function fetchRealResourcesForTopic(topic: string) {
           }))
       : [];
     
-    // Extract videos
+    // Extract videos - prioritize YouTube videos
     const videos = data.videos?.value
       ? data.videos.value
-          .slice(0, 2)
-          .filter((video: any) => video.hostPageUrl && video.hostPageUrl.includes('youtube.com'))
+          .slice(0, 5)
           .map((video: any) => {
             // Extract video ID for YouTube videos
             try {
@@ -45,8 +44,9 @@ async function fetchRealResourcesForTopic(topic: string) {
               
               return {
                 title: video.name,
-                platform: 'YouTube',
-                creator: video.publisher?.[0]?.name || 'YouTube Creator',
+                platform: video.hostPageUrl.includes('youtube.com') ? 'YouTube' : 
+                         video.hostPageUrl.includes('vimeo.com') ? 'Vimeo' : 'Video',
+                creator: video.publisher?.[0]?.name || 'Content Creator',
                 url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : video.hostPageUrl,
                 thumbnail: video.thumbnailUrl
               };
@@ -61,6 +61,55 @@ async function fetchRealResourcesForTopic(topic: string) {
             }
           })
       : [];
+    
+    // Try a second search specifically for videos if we didn't get enough
+    if (videos.length < 2) {
+      try {
+        const videoSearchQuery = `${topic} lecture video`;
+        const videoResponse = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(videoSearchQuery)}&count=5&responseFilter=Videos`, {
+          headers: {
+            'Ocp-Apim-Subscription-Key': process.env.BING_SEARCH_API_KEY || '',
+          }
+        });
+        
+        if (videoResponse.ok) {
+          const videoData = await videoResponse.json();
+          
+          if (videoData.videos?.value) {
+            const additionalVideos = videoData.videos.value
+              .slice(0, 3)
+              .map((video: any) => {
+                try {
+                  const url = new URL(video.hostPageUrl);
+                  const videoId = url.searchParams.get('v');
+                  
+                  return {
+                    title: video.name,
+                    platform: video.hostPageUrl.includes('youtube.com') ? 'YouTube' : 
+                             video.hostPageUrl.includes('vimeo.com') ? 'Vimeo' : 'Video',
+                    creator: video.publisher?.[0]?.name || 'Content Creator',
+                    url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : video.hostPageUrl,
+                    thumbnail: video.thumbnailUrl
+                  };
+                } catch (e) {
+                  return {
+                    title: video.name,
+                    platform: 'Video',
+                    creator: video.publisher?.[0]?.name || 'Content Creator',
+                    url: video.hostPageUrl,
+                    thumbnail: video.thumbnailUrl
+                  };
+                }
+              });
+              
+            videos.push(...additionalVideos);
+          }
+        }
+      } catch (error) {
+        console.error('Error in additional video search:', error);
+        // Continue with what we have
+      }
+    }
     
     return {
       articles,
@@ -139,7 +188,7 @@ export async function POST(request: Request) {
       topicsContent = await generateChatCompletion([
         {
           role: "system",
-          content: "Extract 2-3 key topics from the lecture as a JSON array of strings. Format your response as: [\"topic1\", \"topic2\", \"topic3\"]"
+          content: "Extract 3-5 key topics from the lecture as a JSON array of strings. Format your response as: [\"topic1\", \"topic2\", \"topic3\"]"
         },
         {
           role: "user",
@@ -172,13 +221,61 @@ export async function POST(request: Request) {
           .filter(t => t.length > 0);
       }
       
-      // Limit to 2 topics maximum for faster processing
-      topics = topics.slice(0, 2);
+      // Limit to 5 topics maximum
+      topics = topics.slice(0, 5);
       
       console.log('Summarize API: Parsed topics:', topics);
     } catch (error) {
       console.error('Summarize API: Error parsing topics:', error);
       // Continue with empty topics array
+    }
+
+    // Generate key points from the summary
+    console.log('Summarize API: Generating key points');
+    
+    let keyPointsContent;
+    try {
+      keyPointsContent = await generateChatCompletion([
+        {
+          role: "system",
+          content: "Extract 3-5 key points from the lecture summary as bullet points. Format your response as a simple list with each point on a new line, starting with a dash."
+        },
+        {
+          role: "user",
+          content: `Extract key points from this lecture summary: ${summary}`
+        }
+      ], {
+        model: "gpt-3.5-turbo-0125", // Use the latest optimized model
+        temperature: 0.3, // Lower temperature for faster responses
+        max_tokens: 200 // Limit token count
+      });
+    } catch (error) {
+      console.error('Summarize API: Error extracting key points:', error);
+      keyPointsContent = "";
+    }
+
+    // Generate sample questions for the lecture
+    console.log('Summarize API: Generating sample questions');
+    
+    let sampleQuestionsContent;
+    try {
+      sampleQuestionsContent = await generateChatCompletion([
+        {
+          role: "system",
+          content: "Generate 5 sample questions about the lecture content that would help a student understand the material better. Format your response as a simple list with each question on a new line, starting with a number."
+        },
+        {
+          role: "user",
+          content: `Generate sample questions for this lecture summary: ${summary}`
+        }
+      ], {
+        model: "gpt-3.5-turbo-0125", // Use the latest optimized model
+        temperature: 0.7, // Higher temperature for more creative questions
+        max_tokens: 250 // Limit token count
+      });
+    } catch (error) {
+      console.error('Summarize API: Error generating sample questions:', error);
+      sampleQuestionsContent = "";
     }
 
     // Initialize vector store in parallel with topic extraction to save time
@@ -245,33 +342,73 @@ export async function POST(request: Request) {
     // For external resources, only use the first topic and fetch in parallel
     const additionalResources: any[] = [];
     
-    // Start fetching external resources in parallel with database search
-    let externalResourcesPromise: Promise<any> = Promise.resolve(null);
-    if (topics.length > 0 && process.env.BING_SEARCH_API_KEY) {
-      const externalResourceTopic = topics[0];
-      externalResourcesPromise = fetchRealResourcesForTopic(externalResourceTopic).catch(error => {
-        console.error(`Summarize API: Error fetching real resources:`, error);
-        return null;
-      });
-    }
+    // Process all topics for external resources to get more results
+    const topicsToSearch = topics.slice(0, 3); // Use up to 3 topics for search
     
-    // Wait for external resources to complete
-    const realResources = await externalResourcesPromise;
-    if (realResources) {
-      // Limit resources to reduce response size
-      const limitedResources = {
-        articles: realResources.articles?.slice(0, 2) || [],
-        videos: realResources.videos?.slice(0, 1) || []
-      };
+    if (topicsToSearch.length > 0 && process.env.BING_SEARCH_API_KEY) {
+      console.log(`Summarize API: Fetching external resources for ${topicsToSearch.length} topics`);
       
-      additionalResources.push(limitedResources);
-      console.log(`Summarize API: Added external resources`);
+      try {
+        // Process topics in parallel
+        const resourcePromises = topicsToSearch.map(topic => 
+          fetchRealResourcesForTopic(topic).catch(error => {
+            console.error(`Summarize API: Error fetching resources for topic "${topic}":`, error);
+            return null;
+          })
+        );
+        
+        // Wait for all resource fetches to complete
+        const allResources = await Promise.all(resourcePromises);
+        
+        // Combine all resources
+        const combinedResources = {
+          articles: [] as any[],
+          videos: [] as any[]
+        };
+        
+        // Merge all resources
+        allResources.forEach(resource => {
+          if (resource) {
+            if (resource.articles && resource.articles.length > 0) {
+              combinedResources.articles.push(...resource.articles);
+            }
+            if (resource.videos && resource.videos.length > 0) {
+              combinedResources.videos.push(...resource.videos);
+            }
+          }
+        });
+        
+        // Deduplicate articles by URL
+        const uniqueArticles = Array.from(
+          new Map(combinedResources.articles.map((article: any) => [article.url, article])).values()
+        );
+        
+        // Deduplicate videos by URL
+        const uniqueVideos = Array.from(
+          new Map(combinedResources.videos.map((video: any) => [video.url, video])).values()
+        );
+        
+        // Use up to 5 articles and 3 videos
+        const limitedResources = {
+          articles: uniqueArticles.slice(0, 5),
+          videos: uniqueVideos.slice(0, 3)
+        };
+        
+        additionalResources.push(limitedResources);
+        console.log(`Summarize API: Added ${limitedResources.articles.length} articles and ${limitedResources.videos.length} videos`);
+      } catch (error) {
+        console.error(`Summarize API: Error processing external resources:`, error);
+      }
+    } else {
+      console.log('Summarize API: Skipping external resources (no topics or API key)');
     }
 
     // Combine everything into the response
     const response = {
       summary: summary || "",
       topics: topics || [],
+      keyPoints: keyPointsContent || "",
+      sampleQuestions: sampleQuestionsContent || "",
       relatedArticles: relatedArticles || [],
       additionalResources: additionalResources || [],
       resources: {
