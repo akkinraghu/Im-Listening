@@ -1,37 +1,37 @@
 /**
- * Utility functions for handling build-time scenarios
- * This file helps prevent errors during Netlify builds
+ * This file contains utilities for handling build-time scenarios,
+ * particularly for Netlify and other serverless environments.
  */
 
-// Detect if we're in a build environment (Netlify)
-export const isBuildEnvironment = (): boolean => {
-  return process.env.NETLIFY === 'true' || 
-         process.env.CONTEXT === 'production' || 
-         process.env.CONTEXT === 'deploy-preview' ||
-         process.env.CONTEXT === 'branch-deploy';
-};
-
-// Create a mock for pgvector during build time
-export const createPgVectorMock = () => {
-  return {
-    registerType: () => {
-      console.log('Mock pgvector registerType called during build');
-    }
-  };
-};
-
-// Safe wrapper for pgvector initialization
-export const safeInitPgVector = (pgvector: any, client: any) => {
-  if (isBuildEnvironment()) {
-    console.log('Skipping pgvector initialization during build');
-    return;
+// Mock pgvector module to prevent errors during build time
+export const mockPgVector = {
+  registerType: () => {
+    console.log('Mock pgvector registerType called');
   }
-  
+};
+
+// Helper to determine if we're in a build environment
+export const isBuildTime = () => {
+  return process.env.NODE_ENV === 'production' && 
+         (process.env.NETLIFY === 'true' || 
+          process.env.CONTEXT === 'production' || 
+          process.env.CONTEXT === 'deploy-preview' || 
+          process.env.CONTEXT === 'branch-deploy');
+};
+
+// Helper to safely get pgvector
+export const getPgVector = () => {
   try {
-    // Only try to register if we're not in a build environment
-    pgvector.registerType(client);
-    console.log('pgvector registered successfully');
+    if (isBuildTime()) {
+      console.log('Using mock pgvector during build time');
+      return mockPgVector;
+    }
+    
+    // In runtime, return the real pgvector
+    console.log('Using real pgvector');
+    return require('pgvector/pg');
   } catch (error) {
-    console.warn('Failed to register pgvector:', error);
+    console.warn('Failed to import pgvector, using mock:', error);
+    return mockPgVector;
   }
 };

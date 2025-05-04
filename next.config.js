@@ -13,8 +13,16 @@ const nextConfig = {
   output: 'standalone',
   
   // Explicitly configure webpack to handle path aliases
-  webpack: (config) => {
+  webpack: (config, { isServer, dev }) => {
+    // Add path aliases
     config.resolve.alias['@'] = path.join(__dirname, 'src');
+    
+    // Override pgvector in production builds to prevent errors
+    if (!dev) {
+      console.log('Production build detected, overriding pgvector module');
+      config.resolve.alias['pgvector/pg'] = path.join(__dirname, 'src/utils/pgvectorOverride.js');
+    }
+    
     return config;
   },
 };
