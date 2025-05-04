@@ -1,5 +1,7 @@
 import { Pool, PoolClient } from 'pg';
-import pgvector from 'pgvector/pg';
+
+// Conditionally import pgvector based on environment
+let pgvector: any;
 
 // Detect build environment - specifically for Netlify
 const isBuildTime = process.env.NETLIFY === 'true' || 
@@ -13,6 +15,20 @@ console.log('Environment detection:', {
   NODE_ENV: process.env.NODE_ENV,
   isBuildTime
 });
+
+// Import real or mock pgvector based on environment
+try {
+  if (isBuildTime) {
+    console.log('Using pgvector mock during build');
+    pgvector = { registerType: () => console.log('Mock pgvector registerType called') };
+  } else {
+    pgvector = require('pgvector/pg');
+    console.log('Imported real pgvector module');
+  }
+} catch (error) {
+  console.warn('Failed to import pgvector, using mock:', error);
+  pgvector = { registerType: () => console.log('Fallback mock pgvector registerType called') };
+}
 
 // Check if POSTGRES_URI is defined
 const POSTGRES_URI = process.env.POSTGRES_URI;
