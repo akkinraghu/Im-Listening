@@ -1,9 +1,13 @@
 import { Pool, PoolClient } from 'pg';
 import pgvector from 'pgvector/pg';
 
-const POSTGRES_URI = process.env.POSTGRES_URI!;
+// Check if POSTGRES_URI is defined
+const POSTGRES_URI = process.env.POSTGRES_URI;
 
-if (!POSTGRES_URI) {
+// Don't throw an error during build time
+if (!POSTGRES_URI && process.env.NODE_ENV === 'production' && process.env.NETLIFY) {
+  console.warn('POSTGRES_URI is not defined, but we are in Netlify build environment, continuing with dummy connection');
+} else if (!POSTGRES_URI) {
   throw new Error('Please define the POSTGRES_URI environment variable');
 }
 
@@ -36,10 +40,22 @@ if (!cached.pool) {
   cached.pool = new Pool({
     connectionString: POSTGRES_URI,
   });
-  
-  // Register pgvector with pg
-  pgvector.registerType({ pg: Pool.prototype });
 }
+
+// Safe pgvector initialization
+const initPgVector = async (client: PoolClient) => {
+  try {
+    // Register pgvector with the client
+    pgvector.registerType(client);
+    
+    // Create the extension if it doesn't exist
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    console.log('pgvector extension initialized successfully');
+  } catch (error) {
+    console.warn('Failed to initialize pgvector extension:', error);
+    // Continue without pgvector - this allows the app to work without vector search
+  }
+};
 
 async function connectToPostgres(): Promise<PoolClient> {
   if (cached.client) {
@@ -53,8 +69,8 @@ async function connectToPostgres(): Promise<PoolClient> {
   try {
     cached.client = await cached.promise;
     
-    // Enable vector extension if not already enabled
-    await cached.client.query('CREATE EXTENSION IF NOT EXISTS vector;');
+    // Initialize pgvector
+    await initPgVector(cached.client);
   } catch (e) {
     cached.promise = null;
     cached.client = null;

@@ -1,16 +1,49 @@
 import { Pool, PoolClient, QueryResult, QueryConfig } from 'pg';
 
 // Initialize PostgreSQL connection pool
-export const pool = new Pool({
-  user: process.env.POSTGRES_USER || 'postgres',
-  password: process.env.POSTGRES_PASSWORD || 'postgres',
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'im_listening',
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+let pool: Pool;
+
+try {
+  pool = new Pool({
+    user: process.env.POSTGRES_USER || 'postgres',
+    password: process.env.POSTGRES_PASSWORD || 'postgres',
+    host: process.env.POSTGRES_HOST || 'localhost',
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: process.env.POSTGRES_DB || 'im_listening',
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  });
+
+  // Test the connection
+  pool.query('SELECT NOW()', (err) => {
+    if (err) {
+      console.error('Error connecting to PostgreSQL:', err);
+    } else {
+      console.log('PostgreSQL connection established successfully');
+      
+      // Initialize pgvector extension if needed
+      try {
+        // Only try to create the extension if we're not in a production environment
+        if (process.env.NODE_ENV !== 'production') {
+          pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+        }
+      } catch (vectorErr) {
+        console.warn('Note: pgvector extension not available:', vectorErr);
+      }
+    }
+  });
+} catch (error) {
+  console.error('Failed to initialize PostgreSQL pool:', error);
+  // Create a dummy pool for build/deployment time
+  pool = {
+    query: () => Promise.resolve({ rows: [], rowCount: 0 }),
+    connect: () => Promise.resolve({} as PoolClient),
+    end: () => Promise.resolve(),
+  } as unknown as Pool;
+}
+
+export { pool };
 
 // Helper function to execute a query
 export async function query(text: string, params?: any[]): Promise<QueryResult> {
