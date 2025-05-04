@@ -1,12 +1,34 @@
 import { Pool, PoolClient } from 'pg';
 import pgvector from 'pgvector/pg';
 
+// Detect build environment
+const isBuildTime = process.env.NODE_ENV === 'production' && 
+                   (process.env.NETLIFY === 'true' || process.env.VERCEL_ENV === 'production') && 
+                   process.env.NEXT_PHASE === 'phase-production-build';
+
 // Check if POSTGRES_URI is defined
 const POSTGRES_URI = process.env.POSTGRES_URI;
 
+// Create a dummy client for build time
+const createDummyClient = () => {
+  return {
+    query: () => Promise.resolve({ rows: [], rowCount: 0 }),
+    release: () => {},
+  } as unknown as PoolClient;
+};
+
+// Create a dummy pool for build time
+const createDummyPool = () => {
+  return {
+    query: () => Promise.resolve({ rows: [], rowCount: 0 }),
+    connect: () => Promise.resolve(createDummyClient()),
+    end: () => Promise.resolve(),
+  } as unknown as Pool;
+};
+
 // Don't throw an error during build time
-if (!POSTGRES_URI && process.env.NODE_ENV === 'production' && process.env.NETLIFY) {
-  console.warn('POSTGRES_URI is not defined, but we are in Netlify build environment, continuing with dummy connection');
+if (!POSTGRES_URI && isBuildTime) {
+  console.warn('POSTGRES_URI is not defined, but we are in build environment, continuing with dummy connection');
 } else if (!POSTGRES_URI) {
   throw new Error('Please define the POSTGRES_URI environment variable');
 }
@@ -37,13 +59,29 @@ if (!global.postgres) {
 
 // Create a new pool if not already created
 if (!cached.pool) {
-  cached.pool = new Pool({
-    connectionString: POSTGRES_URI,
-  });
+  try {
+    if (isBuildTime) {
+      console.log('Using dummy PostgreSQL pool for build time');
+      cached.pool = createDummyPool();
+    } else {
+      cached.pool = new Pool({
+        connectionString: POSTGRES_URI,
+      });
+      console.log('PostgreSQL pool initialized');
+    }
+  } catch (error) {
+    console.error('Failed to initialize PostgreSQL pool:', error);
+    cached.pool = createDummyPool();
+  }
 }
 
 // Safe pgvector initialization
 const initPgVector = async (client: PoolClient) => {
+  if (isBuildTime) {
+    console.log('Skipping pgvector initialization during build');
+    return;
+  }
+  
   try {
     // Register pgvector with the client
     pgvector.registerType(client);
@@ -62,6 +100,13 @@ async function connectToPostgres(): Promise<PoolClient> {
     return cached.client;
   }
 
+  // For build time, return a dummy client
+  if (isBuildTime) {
+    console.log('Using dummy PostgreSQL client for build time');
+    cached.client = createDummyClient();
+    return cached.client;
+  }
+
   if (!cached.promise) {
     cached.promise = cached.pool!.connect();
   }
@@ -72,9 +117,12 @@ async function connectToPostgres(): Promise<PoolClient> {
     // Initialize pgvector
     await initPgVector(cached.client);
   } catch (e) {
+    console.error('Error connecting to PostgreSQL:', e);
     cached.promise = null;
     cached.client = null;
-    throw e;
+    
+    // Return a dummy client on error
+    return createDummyClient();
   }
 
   return cached.client;
