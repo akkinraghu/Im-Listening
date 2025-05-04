@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server';
-import connectToPostgres from '@/lib/postgres';
-import { executeQuery } from '@/lib/postgres';
+import { getClient, query } from '@/lib/postgres';
 
 export async function GET() {
   try {
-    // Test PostgreSQL connection
-    const client = await connectToPostgres();
-    const pgVersion = await client.query('SELECT version()');
-    client.release();
+    // Test PostgreSQL connection using the query helper
+    const pgVersion = await query('SELECT version()');
     
     return NextResponse.json({
       status: 'success',
