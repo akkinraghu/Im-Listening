@@ -1,17 +1,17 @@
 [build]
-  command = "DISABLE_ESLINT_PLUGIN=true npm run build"
+  command = "npm run build"
   publish = ".next"
 
 [build.environment]
-  NETLIFY_NEXT_PLUGIN_SKIP = "true"
-  NEXT_DISABLE_ESLINT = "true"
-  DISABLE_ESLINT_PLUGIN = "true"
-  CI = "false"
+  NEXT_TELEMETRY_DISABLED = "1"
+  NEXT_DISABLE_ESLINT = "1"
+  NODE_ENV = "production"
 
 [[plugins]]
-  package = "@netlify/plugin-nextjs"
+  package = "./netlify-build-plugin.js"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Uncomment this if you need to handle specific redirects
+# [[redirects]]
+#   from = "/*"
+#   to = "/index.html"
+#   status = 200

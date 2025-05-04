@@ -4,10 +4,11 @@ import { OpenAIEmbeddings } from '@langchain/openai';
 // Import PostgreSQL connection pool
 import { pool } from './postgres';
 
-// Detect build environment
-const isBuildTime = process.env.NODE_ENV === 'production' && 
-                   (process.env.NETLIFY === 'true' || process.env.VERCEL_ENV === 'production') && 
-                   process.env.NEXT_PHASE === 'phase-production-build';
+// Detect build environment - specifically for Netlify
+const isBuildTime = process.env.NETLIFY === 'true' || 
+                   process.env.CONTEXT === 'production' || 
+                   process.env.CONTEXT === 'deploy-preview' ||
+                   process.env.CONTEXT === 'branch-deploy';
 
 // Define the result type for similarity search
 interface SimilaritySearchResult {

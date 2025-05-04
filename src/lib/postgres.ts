@@ -1,10 +1,18 @@
 import { Pool, PoolClient } from 'pg';
 import pgvector from 'pgvector/pg';
 
-// Detect build environment
-const isBuildTime = process.env.NODE_ENV === 'production' && 
-                   (process.env.NETLIFY === 'true' || process.env.VERCEL_ENV === 'production') && 
-                   process.env.NEXT_PHASE === 'phase-production-build';
+// Detect build environment - specifically for Netlify
+const isBuildTime = process.env.NETLIFY === 'true' || 
+                   process.env.CONTEXT === 'production' || 
+                   process.env.CONTEXT === 'deploy-preview' ||
+                   process.env.CONTEXT === 'branch-deploy';
+
+console.log('Environment detection:', {
+  NETLIFY: process.env.NETLIFY,
+  CONTEXT: process.env.CONTEXT,
+  NODE_ENV: process.env.NODE_ENV,
+  isBuildTime
+});
 
 // Check if POSTGRES_URI is defined
 const POSTGRES_URI = process.env.POSTGRES_URI;
@@ -67,7 +75,7 @@ if (!cached.pool) {
       cached.pool = new Pool({
         connectionString: POSTGRES_URI,
       });
-      console.log('PostgreSQL pool initialized');
+      console.log('PostgreSQL pool initialized with connection string');
     }
   } catch (error) {
     console.error('Failed to initialize PostgreSQL pool:', error);
